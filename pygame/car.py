@@ -56,6 +56,10 @@ class rotatable_sprite(pygame.sprite.Sprite):
         self.rect = self.rect.move(dx, dy)
         return self.rect
 
+    def move_to(self, pos):
+        self.rect.topleft = pos
+        return self.rect
+
     def rotate(self, angle):
         x, y = self.offset
         logical_centerx = self.rect.left + x
@@ -85,6 +89,7 @@ class rotatable_sprite(pygame.sprite.Sprite):
 class robot_sprite(rotatable_sprite):
     def __init__(self, image):
         super(robot_sprite, self).__init__(Robot, image)
+        self.move_to(Robot.position)
 
 Range_width, Range_distance = 20, 96
 
@@ -99,11 +104,12 @@ class range_finder_image(pygame.Surface):
         self.logical_center = 0, Range_distance/2
 
 class robot(pygame.sprite.RenderUpdates):
-    def __init__(self):
+    def __init__(self, posx, posy):
         super(robot, self).__init__()
         self.heading = 0.0
         self.heading_per_tick = 0.0
         self.direction = 0
+        self.position = posx, posy
 
     def set_steering(self, rate):
         self.heading_per_tick = rate/10.0
@@ -115,9 +121,13 @@ class robot(pygame.sprite.RenderUpdates):
         if self.direction:
             self.clear(Screen, Background)
             ra = math.radians(self.heading)
-            delta = \
+            dx, dy = \
               self.direction * math.sin(ra), -self.direction * math.cos(ra)
-            ans = self.move(delta)
+            print "heading", self.heading, "dx", dx, "dy", dy
+            self.position = self.position[0] + dx, self.position[1] + dy
+            ans = self.move_to(self.position)
+            if self.heading_per_tick:
+                self.rotate(self.heading_per_tick * self.direction)
             pygame.display.update(self.draw(Screen))
             return ans
 
@@ -130,9 +140,22 @@ class robot(pygame.sprite.RenderUpdates):
             else: ans = ans.union(r)
         return ans
 
-Robot = robot()
+    def move_to(self, pos):
+        ans = None
+        for s in self:
+            r = s.move_to(pos)
+            #print "move_to got", r, "from", s
+            if ans is None: ans = r
+            else: ans = ans.union(r)
+        return ans
+
+    def rotate(self, angle):
+        self.heading += angle
+        for s in self:
+            s.rotate(angle)
+
+Robot = robot((Width + 150)//2 + 10, (Height + 200)//2 + 10)
 Car = robot_sprite(car_image())
-Car.move(((Width + 150)//2 + 10, (Height + 200)//2 + 10))
 #Car.update('rotate', 30.0)
 
 class background(pygame.Surface):
@@ -170,6 +193,7 @@ def init():
     Screen.blit(Background, (0, 0))
     Robot.draw(Screen)
     pygame.display.flip()
+    Robot.set_steering(3.0)
     Robot.set_direction(1.0)
 
     while True:
