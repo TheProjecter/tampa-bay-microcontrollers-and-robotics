@@ -1,0 +1,12 @@
+syntax: glob
+
+*.pyc
+*.pyo
+testdoc_*.py
+testall_*.py
+.pyhist
+.*.swp
+*.egg-info
+build
+dist
+MANIFEST
