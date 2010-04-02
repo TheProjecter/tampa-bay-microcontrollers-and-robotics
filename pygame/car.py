@@ -61,7 +61,8 @@ class rotatable_sprite(pygame.sprite.Sprite):
         logical_centerx = self.rect.left + x
         logical_centery = self.rect.top + y
         print "pre-rotated rect", self.rect, "at heading", self.heading
-        print "logical_centerx", logical_centerx, "logical_centery", logical_centery
+        print "logical_centerx", logical_centerx, \
+              "logical_centery", logical_centery
 
         self.heading += angle
         self.image = pygame.transform.rotate(self.base_image, -self.heading)
@@ -100,6 +101,25 @@ class range_finder_image(pygame.Surface):
 class robot(pygame.sprite.RenderUpdates):
     def __init__(self):
         super(robot, self).__init__()
+        self.heading = 0.0
+        self.heading_per_tick = 0.0
+        self.direction = 0
+
+    def set_steering(self, rate):
+        self.heading_per_tick = rate/10.0
+
+    def set_direction(self, dir):
+        self.direction = dir
+
+    def tick(self):
+        if self.direction:
+            self.clear(Screen, Background)
+            ra = math.radians(self.heading)
+            delta = \
+              self.direction * math.sin(ra), -self.direction * math.cos(ra)
+            ans = self.move(delta)
+            pygame.display.update(self.draw(Screen))
+            return ans
 
     def move(self, delta):
         ans = None
@@ -112,7 +132,8 @@ class robot(pygame.sprite.RenderUpdates):
 
 Robot = robot()
 Car = robot_sprite(car_image())
-Car.update('rotate', 30.0)
+Car.move(((Width + 150)//2 + 10, (Height + 200)//2 + 10))
+#Car.update('rotate', 30.0)
 
 class background(pygame.Surface):
     def __init__(self):
@@ -149,19 +170,13 @@ def init():
     Screen.blit(Background, (0, 0))
     Robot.draw(Screen)
     pygame.display.flip()
+    Robot.set_direction(1.0)
 
-    while 1:
+    while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT: sys.exit()
 
-        Robot.clear(Screen, Background)
-        loc_rect = Robot.move(Speed)
-        if loc_rect.left < 0 or loc_rect.right > Width:
-            Speed[0] = -Speed[0]
-        if loc_rect.top < 0 or loc_rect.bottom > Height:
-            Speed[1] = -Speed[1]
+        Robot.tick()
 
-        #Screen.blit(ball, ballrect)
-        pygame.display.update(Robot.draw(Screen))
         time.sleep(0.005)
 
