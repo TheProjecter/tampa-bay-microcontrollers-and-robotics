@@ -82,12 +82,16 @@ class background(pygame.Surface):
 
 Background = background()
 
-class obstacle(pygame.Surface):
+class obstacle(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height):
-        super(obstacle, self).__init__((width, height))
-        self.fill(Black)
+        super(obstacle, self).__init__(Obstacles)
         self.rect = pygame.Rect(x, y, width, height)
-        Background.blit(self, self.rect)
+        self.image = pygame.Surface((width, height))
+        self.image.fill(Black)
+        Background.blit(self.image, self.rect)
+
+Obstacles = pygame.sprite.Group()
+#obstacle((Width - 150)//2, (Height - 200)//2, 150, 200)
 
 def init():
     global Screen
