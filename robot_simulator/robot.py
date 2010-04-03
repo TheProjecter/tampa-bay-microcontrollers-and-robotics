@@ -116,7 +116,7 @@ class robot(pygame.sprite.RenderUpdates):
         self.heading = 0.0
         self.heading_per_tick = 0.0
         self.direction = 0
-        self.position = posx, posy
+        self.int_position = self.position = posx, posy
 
     def set_steering(self, rate):
         self.heading_per_tick = rate/10.0
@@ -131,8 +131,7 @@ class robot(pygame.sprite.RenderUpdates):
             dx, dy = \
               self.direction * math.sin(ra), -self.direction * math.cos(ra)
             print "heading", self.heading, "dx", dx, "dy", dy
-            self.position = self.position[0] + dx, self.position[1] + dy
-            ans = self.move_to(self.position)
+            ans = self.move_to((self.position[0] + dx, self.position[1] + dy))
             if self.heading_per_tick:
                 self.rotate(self.heading_per_tick * self.direction)
             pygame.display.update(self.draw(robot_simulator.Screen))
@@ -164,13 +163,10 @@ class robot(pygame.sprite.RenderUpdates):
         return ans
 
     def move_to(self, pos):
-        ans = None
-        for s in self:
-            r = s.move_to(pos)
-            #print "move_to got", r, "from", s
-            if ans is None: ans = r
-            else: ans = ans.union(r)
-        return ans
+        self.position = pos
+        curx, cury = self.int_position
+        self.int_position = newx, newy = int(round(pos[0])), int(round(pos[1]))
+        return self.move((newx - curx, newy - cury))
 
     def rotate(self, angle):
         self.heading += angle

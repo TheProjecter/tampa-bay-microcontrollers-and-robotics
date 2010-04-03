@@ -35,14 +35,18 @@ def test():
     Robot.move(((Width - 150)//2, (Height - 200)//2))
     print "collide", pygame.sprite.collide_mask(Car, Building)
 
-def run():
+def start():
     global Screen
     Screen = pygame.display.set_mode(Size)
     Screen.blit(background.Background, (0, 0))
     Robot.draw(Screen)
     pygame.display.flip()
-    #Robot.set_steering(3.0)
-    #Robot.set_direction(1.0)
+    return Robot
 
-    #Robot.forward(100)
+def run():
+    robot = start()
+    #robot.set_steering(3.0)
+    #robot.set_direction(1.0)
+
+    #robot.forward(100)
 
