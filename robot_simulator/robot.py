@@ -1,4 +1,4 @@
-# car.py
+# robot.py
 
 from __future__ import division
 
@@ -7,31 +7,24 @@ import time
 import math
 import pygame
 
-Size = Width, Height = 640, 480
-Speed = [1, 1]
-
-White = pygame.Color(255, 255, 255)
-Red = pygame.Color(255, 0, 0)
-Green = pygame.Color(0, 255, 0)
-Blue = pygame.Color(0, 0, 255)
-LtBlue = pygame.Color(128, 128, 255)
-Black = pygame.Color(0, 0, 0)
+import robot_simulator
+from robot_simulator import background
 
 Car_body = (3, 2, 10, 20)
 
 Car_components = (
-    (Blue, Car_body),         # main body
-    (Black, (0, 0, 3, 6)),    # lf wheel
-    (Black, (13, 0, 3, 6)),   # rf wheel
-    (Black, (0, 18, 3, 6)),   # lr wheel
-    (Black, (13, 18, 3, 6)),  # rr wheel
+    (robot_simulator.Green, Car_body),        # main body
+    (robot_simulator.Black, (0, 0, 3, 6)),    # lf wheel
+    (robot_simulator.Black, (13, 0, 3, 6)),   # rf wheel
+    (robot_simulator.Black, (0, 18, 3, 6)),   # lr wheel
+    (robot_simulator.Black, (13, 18, 3, 6)),  # rr wheel
 )
 
 class car_image(pygame.Surface):
     def __init__(self):
         super(car_image, self).__init__((16, 24))
-        self.set_colorkey(White, pygame.RLEACCEL)
-        self.fill(White)
+        self.set_colorkey(robot_simulator.White, pygame.RLEACCEL)
+        self.fill(robot_simulator.White)
         for color, rect in Car_components:
             self.fill(color, rect)
         self.logical_center = (0, -10)   # from image center to logical center
@@ -88,17 +81,31 @@ class rotatable_sprite(pygame.sprite.Sprite):
 
 class robot_sprite(rotatable_sprite):
     def __init__(self, image):
-        super(robot_sprite, self).__init__(Robot, image)
-        self.move_to(Robot.position)
+        super(robot_sprite, self).__init__(robot_simulator.Robot, image)
+
+        # desired position of image logical center
+        x, y = robot_simulator.Robot.position
+
+        # from image center to logical center
+        lcx, lcy = self.base_image.logical_center
+
+        # image center
+        cx, cy = x - lcx, y - lcy
+
+        rect = self.base_image.get_rect()
+        assert rect.top == rect.left == 0
+
+        self.move_to((cx - rect.centerx, cy - rect.centery))
 
 Range_width, Range_distance = 20, 96
 
 class range_finder_image(pygame.Surface):
     def __init__(self):
         super(range_finder_image, self).__init__((Range_width, Range_distance))
-        self.set_colorkey(White, pygame.RLEACCEL)
-        self.fill(Red)
-        self.fill(White, (2, 2, Range_width - 4, Range_distance - 4))
+        self.set_colorkey(robot_simulator.White, pygame.RLEACCEL)
+        self.fill(robot_simulator.Red)
+        self.fill(robot_simulator.White,
+                  (2, 2, Range_width - 4, Range_distance - 4))
 
         # from image center to logical center
         self.logical_center = 0, Range_distance/2
@@ -119,7 +126,7 @@ class robot(pygame.sprite.RenderUpdates):
 
     def tick(self):
         if self.direction:
-            self.clear(Screen, Background)
+            self.clear(robot_simulator.Screen, background.Background)
             ra = math.radians(self.heading)
             dx, dy = \
               self.direction * math.sin(ra), -self.direction * math.cos(ra)
@@ -128,8 +135,24 @@ class robot(pygame.sprite.RenderUpdates):
             ans = self.move_to(self.position)
             if self.heading_per_tick:
                 self.rotate(self.heading_per_tick * self.direction)
-            pygame.display.update(self.draw(Screen))
+            pygame.display.update(self.draw(robot_simulator.Screen))
             return ans
+
+    def forward(self, distance):
+        self.set_direction(1)
+        return self.go(distance)
+
+    def backward(self, distance):
+        self.set_direction(-1)
+        return self.go(distance)
+
+    def go(self, distance):
+        for i in xrange(distance):
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT: sys.exit()
+            self.tick()
+            time.sleep(0.005)
+        return distance
 
     def move(self, delta):
         ans = None
@@ -153,54 +176,4 @@ class robot(pygame.sprite.RenderUpdates):
         self.heading += angle
         for s in self:
             s.rotate(angle)
-
-Robot = robot((Width + 150)//2 + 10, (Height + 200)//2 + 10)
-Car = robot_sprite(car_image())
-#Car.update('rotate', 30.0)
-
-class background(pygame.Surface):
-    def __init__(self):
-        super(background, self).__init__((Width, Height))
-        self.fill(White)
-
-        self.mask = pygame.Mask((Width, Height))
-        for x in range(Width):
-            for y in range(Height):
-                self.mask.set_at((x, y), 0)
-
-Background = background()
-
-class obstacle(pygame.sprite.Sprite):
-    def __init__(self, x, y, width, height):
-        super(obstacle, self).__init__(Obstacles)
-        self.rect = pygame.Rect(x, y, width, height)
-        self.image = pygame.Surface((width, height))
-        self.image.fill(Black)
-        Background.blit(self.image, self.rect)
-        self.mask = pygame.mask.from_surface(self.image)
-
-Obstacles = pygame.sprite.Group()
-Building = obstacle((Width - 150)//2, (Height - 200)//2, 150, 200)
-
-def test():
-    print "collide", pygame.sprite.collide_mask(Car, Building)
-    Robot.move(((Width - 150)//2, (Height - 200)//2))
-    print "collide", pygame.sprite.collide_mask(Car, Building)
-
-def init():
-    global Screen
-    Screen = pygame.display.set_mode(Size)
-    Screen.blit(Background, (0, 0))
-    Robot.draw(Screen)
-    pygame.display.flip()
-    Robot.set_steering(3.0)
-    Robot.set_direction(1.0)
-
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: sys.exit()
-
-        Robot.tick()
-
-        time.sleep(0.005)
 
