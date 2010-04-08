@@ -14,6 +14,7 @@ Car_body = (3, 2, 10, 20)
 
 Car_components = (
     (robot_simulator.Green, Car_body),        # main body
+    (robot_simulator.Black, (6, 4, 4, 4)),    # front mark
     (robot_simulator.Black, (0, 0, 3, 6)),    # lf wheel
     (robot_simulator.Black, (13, 0, 3, 6)),   # rf wheel
     (robot_simulator.Black, (0, 18, 3, 6)),   # lr wheel
@@ -27,75 +28,88 @@ class car_image(pygame.Surface):
         self.fill(robot_simulator.White)
         for color, rect in Car_components:
             self.fill(color, rect)
-        self.logical_center = (0, -10)   # from image center to logical center
+
+        # when heading is 0:
+        #   logical center = image center + logical_center
+        self.logical_center = (0, -10)
 
 class rotatable_sprite(pygame.sprite.Sprite):
-    def __init__(self, group, image):
+    def __init__(self, name, group, image):
         super(rotatable_sprite, self).__init__(group)
+        self.name = name
         self.base_image = image
         self.heading = 0.0
         self.image = image
         self.rect = self.image.get_rect()
-
-        # rect.topleft + offset == logical image center
+        lcx, lcy = self.base_image.logical_center
         cx, cy = self.rect.center
-        lcx, lcy = self.image.logical_center
-        self.offset = cx + lcx, cy + lcy
+        self.offset = lcx, lcy
+        self.position = cx + lcx, cy + lcy
+        print self.name, "initial position", self.position
 
     def update(self, fn, *args):
         getattr(self, fn)(*args)
 
-    def move(self, (dx, dy)):
-        self.rect = self.rect.move(dx, dy)
-        return self.rect
-
     def move_to(self, pos):
-        self.rect.topleft = pos
+        px, py = self.position = pos
+        lcx, lcy = self.offset
+        self.rect.center = round(px - lcx), round(py - lcy)
         return self.rect
 
     def rotate(self, angle):
-        x, y = self.offset
-        logical_centerx = self.rect.left + x
-        logical_centery = self.rect.top + y
-        print "pre-rotated rect", self.rect, "at heading", self.heading
-        print "logical_centerx", logical_centerx, \
-              "logical_centery", logical_centery
+        print self.name, "pre-rotated rect", self.rect, \
+                         "center", self.rect.center, \
+                         "at heading", self.heading
 
         self.heading += angle
         self.image = pygame.transform.rotate(self.base_image, -self.heading)
         self.rect = self.image.get_rect()
+
+        # This shows the influence of x at heading h.
+        #
+        #         |
+        #         |
+        # --------+-------> x+
+        #         |\h |
+        #         | \ | sin
+        #         |  \|
+        #         |---+
+        #         |cos  
+        #         |
+        #         V
+        #         y+
+
+        # This shows the influence of y at heading h.
+        #
+        #         |
+        #         |
+        # --------+-------> x+
+        #     |  /|
+        # cos | /h|
+        #     |/  |
+        #     +---|
+        #      sin|  
+        #         |
+        #         V
+        #         y+
+
         ra = math.radians(self.heading)
         sin, cos = math.sin(ra), math.cos(ra)
         x, y = self.base_image.logical_center
-        cx, cy = self.rect.center
-        lcx = x * cos - y * sin
-        lcy = y * cos + x * sin
-        ox = cx + lcx
-        oy = cy + lcy
-        self.offset = ox, oy
-        print "new self.offset", self.offset
-        self.rect.left = logical_centerx - ox
-        self.rect.top = logical_centery - oy
-        print "rotated rect", self.rect, "at heading", self.heading
+        #print self.name, "logical_center offset at heading 0", (x, y)
+        self.offset = x * cos - y * sin, y * cos + x * sin
+        #print self.name, "new logical center offset", self.offset
+        #print self.name, "position", self.position, \
+        #                 "rotated rect.center", self.rect.center
+        self.move_to(self.position)
+        #print self.name, "adjusted rect.center", self.rect.center
+        #print self.name, "rotated rect", self.rect, "at heading", self.heading
 
 
 class robot_sprite(rotatable_sprite):
-    def __init__(self, image):
-        super(robot_sprite, self).__init__(robot_simulator.Robot, image)
-
-        # desired position of image logical center
-        x, y = robot_simulator.Robot.position
-
-        # from image center to logical center
-        lcx, lcy = self.base_image.logical_center
-
-        # image center
-        cx, cy = x - lcx, y - lcy
-
-        rect = self.base_image.get_rect()
-        assert rect.top == rect.left == 0
-
-        self.move_to((cx - rect.centerx, cy - rect.centery))
+    def __init__(self, name, image):
+        super(robot_sprite, self).__init__(name, robot_simulator.Robot, image)
+        self.move_to(robot_simulator.Robot.position)
 
 Range_width, Range_distance = 20, 96
 
@@ -103,11 +117,11 @@ class range_finder_image(pygame.Surface):
     def __init__(self):
         super(range_finder_image, self).__init__((Range_width, Range_distance))
         self.set_colorkey(robot_simulator.White, pygame.RLEACCEL)
+        self.set_alpha(80, pygame.RLEACCEL)
         self.fill(robot_simulator.Red)
-        self.fill(robot_simulator.White,
-                  (2, 2, Range_width - 4, Range_distance - 4))
 
-        # from image center to logical center
+        # when heading is 0:
+        #   logical center = image center + logical_center
         self.logical_center = 0, Range_distance/2
 
 class robot(pygame.sprite.RenderUpdates):
@@ -153,20 +167,16 @@ class robot(pygame.sprite.RenderUpdates):
             time.sleep(0.005)
         return distance
 
-    def move(self, delta):
+    def move_to(self, pos):
+        print "move_to", pos
+        self.position = pos
         ans = None
         for s in self:
-            r = s.move(delta)
+            r = s.move_to(pos)
             #print "move got", r, "from", s
             if ans is None: ans = r
             else: ans = ans.union(r)
         return ans
-
-    def move_to(self, pos):
-        self.position = pos
-        curx, cury = self.int_position
-        self.int_position = newx, newy = int(round(pos[0])), int(round(pos[1]))
-        return self.move((newx - curx, newy - cury))
 
     def rotate(self, angle):
         self.heading += angle

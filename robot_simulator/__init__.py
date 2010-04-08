@@ -12,6 +12,7 @@ Size = Width, Height = 640, 480
 
 White = pygame.Color(255, 255, 255)
 Red = pygame.Color(255, 0, 0)
+RedTransparent = pygame.Color(128, 0, 0, 128)
 Green = pygame.Color(0, 255, 0)
 Blue = pygame.Color(0, 0, 255)
 LtBlue = pygame.Color(128, 128, 255)
@@ -20,8 +21,8 @@ Black = pygame.Color(0, 0, 0)
 from robot_simulator import robot, background
 
 Robot = robot.robot((Width + 150)//2 + 10, (Height + 200)//2 + 10)
-Car = robot.robot_sprite(robot.car_image())
-Range_finder = robot.robot_sprite(robot.range_finder_image())
+Car = robot.robot_sprite('car', robot.car_image())
+Range_finder = robot.robot_sprite('range_finder', robot.range_finder_image())
 #Car.update('rotate', 30.0)
 
 Obstacles = pygame.sprite.Group()
@@ -45,8 +46,22 @@ def start():
 
 def run():
     robot = start()
-    #robot.set_steering(3.0)
-    #robot.set_direction(1.0)
 
-    #robot.forward(100)
+    robot.set_steering(18.0)
+    raw_input('waiting: ')
+    robot.forward(200)
+
+    #raw_input('waiting: ')
+    #for i in xrange(100):
+    #    robot.clear(Screen, background.Background)
+    #    robot.rotate(1.8)
+    #    pygame.display.update(robot.draw(Screen))
+
+    #for i in range(36):
+    #    raw_input('waiting: ')
+    #    robot.forward(20.0)
+    #    raw_input('waiting: ')
+    #    robot.clear(Screen, background.Background)
+    #    robot.rotate(10.0)
+    #    pygame.display.update(robot.draw(Screen))
 
