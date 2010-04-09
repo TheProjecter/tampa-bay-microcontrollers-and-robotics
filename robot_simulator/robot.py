@@ -10,6 +10,8 @@ import pygame
 import robot_simulator
 from robot_simulator import background
 
+Range_width, Range_distance = 20, 30
+
 Car_body = (3, 2, 10, 20)
 
 Car_components = (
@@ -107,11 +109,9 @@ class rotatable_sprite(pygame.sprite.Sprite):
 
 
 class robot_sprite(rotatable_sprite):
-    def __init__(self, name, image):
-        super(robot_sprite, self).__init__(name, robot_simulator.Robot, image)
-        self.move_to(robot_simulator.Robot.position)
-
-Range_width, Range_distance = 20, 96
+    def __init__(self, name, group, image):
+        super(robot_sprite, self).__init__(name, group, image)
+        self.move_to(group.position)
 
 class range_finder_image(pygame.Surface):
     def __init__(self):
@@ -130,17 +130,43 @@ class robot(pygame.sprite.RenderUpdates):
         self.heading = 0.0
         self.heading_per_tick = 0.0
         self.direction = 0
-        self.int_position = self.position = posx, posy
+        self.position = posx, posy
+        self.rf = robot_sprite('range_finder', self, range_finder_image())
+        self.remove(self.rf)
+        self.rf_angle = None
 
     def set_steering(self, rate):
         self.heading_per_tick = rate/10.0
 
+    def set_rf(self, angle=None):
+        r'''Set range finder angle.
+
+        An angle of None turns off the range finder.
+        '''
+        self.erase_image()
+        if angle is None:
+            if self.rf_angle is not None:
+                self.remove(self.rf)
+        else:
+            if self.rf_angle is None:
+                self.add(self.rf)
+                self.rf.move_to(self.position)
+            self.rf.rotate(self.heading + angle - self.rf.heading)
+        self.rf_angle = angle
+        self.draw_image()
+
     def set_direction(self, dir):
         self.direction = dir
 
+    def erase_image(self):
+        self.clear(robot_simulator.Screen, background.Background)
+
+    def draw_image(self):
+        pygame.display.update(self.draw(robot_simulator.Screen))
+
     def tick(self):
         if self.direction:
-            self.clear(robot_simulator.Screen, background.Background)
+            self.erase_image()
             ra = math.radians(self.heading)
             dx, dy = \
               self.direction * math.sin(ra), -self.direction * math.cos(ra)
@@ -148,7 +174,7 @@ class robot(pygame.sprite.RenderUpdates):
             ans = self.move_to((self.position[0] + dx, self.position[1] + dy))
             if self.heading_per_tick:
                 self.rotate(self.heading_per_tick * self.direction)
-            pygame.display.update(self.draw(robot_simulator.Screen))
+            self.draw_image()
             return ans
 
     def forward(self, distance):

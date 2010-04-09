@@ -20,10 +20,8 @@ Black = pygame.Color(0, 0, 0)
 
 from robot_simulator import robot, background
 
-Robot = robot.robot((Width + 150)//2 + 10, (Height + 200)//2 + 10)
-Car = robot.robot_sprite('car', robot.car_image())
-Range_finder = robot.robot_sprite('range_finder', robot.range_finder_image())
-#Car.update('rotate', 30.0)
+Robot = robot.robot((Width + 150)//2 + 15, (Height + 200)//2 + 10)
+Car = robot.robot_sprite('car', Robot, robot.car_image())
 
 Obstacles = pygame.sprite.Group()
 Building = background.obstacle((Width - 150)//2, (Height - 200)//2, 150, 200)
