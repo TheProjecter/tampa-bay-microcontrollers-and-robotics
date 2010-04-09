@@ -27,6 +27,10 @@ Range_finder = robot.robot_sprite('range_finder', robot.range_finder_image())
 
 Obstacles = pygame.sprite.Group()
 Building = background.obstacle((Width - 150)//2, (Height - 200)//2, 150, 200)
+background.obstacle(0, 0, 4, Height)
+background.obstacle(Width - 4, 0, 4, Height)
+background.obstacle(4, 0, Width - 8, 4)
+background.obstacle(4, Height - 4, Width - 8, 4)
 print "making Background mask"
 background.Background.make_mask()
 print "done making Background mask"
