@@ -51,6 +51,16 @@ get_waypoint_by_direction
         get_waypoint($step, $x, $y, $distance, $heading, $plan)
         check_direction($step, $heading)
 
+first_pos_already_visited
+    use waypoint_already_visited($step, $x, $y)
+    when
+        history.position(0, $x, $y)
+        special.claim_goal()
+        history.position($step, $hx, $hy)
+        check $step > 4
+        $distance = driver.distance(($hx, $hy), ($x, $y))
+        check $distance < 5
+
 waypoint_already_visited
     use waypoint_already_visited($step, $x, $y)
     when
