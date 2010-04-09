@@ -99,13 +99,14 @@ goto_direct
         driver.Robot.set_rf(0)
         driver.Robot.forward($distance)
 
-big_turn
-    use make_plan($step, $turn_angle, $_distance)
+big_turn_forward
+    use make_plan($step, $turn_angle, $distance)
     when
         check 45 <= $turn_angle <= 315
+        check $distance > 30
         special.claim_goal()
     with
-        print "big_turn", $turn_angle
+        print "big_turn_forward", $turn_angle
         driver.Robot.set_rf(0)
         if $turn_angle > 180:
             driver.Robot.set_steering(-45)
@@ -115,10 +116,29 @@ big_turn
             distance = $turn_angle / 4.5
         driver.Robot.forward(distance)
 
-little_turn
+big_turn_backward
     use make_plan($step, $turn_angle, $_distance)
+    when
+        check 45 <= $turn_angle <= 315
+        special.claim_goal()
     with
-        print "little_turn", $turn_angle
+        print "big_turn_backward", $turn_angle
+        driver.Robot.set_rf(0)
+        if $turn_angle > 180:
+            driver.Robot.set_steering(45)
+            distance = (360 - $turn_angle) / 4.5
+        else:
+            driver.Robot.set_steering(-45)
+            distance = $turn_angle / 4.5
+        driver.Robot.backward(distance)
+
+little_turn_forward
+    use make_plan($step, $turn_angle, $distance)
+    when
+        check $distance > 10
+        special.claim_goal()
+    with
+        print "little_turn_forward", $turn_angle
         driver.Robot.set_rf(0)
         if $turn_angle > 180:
             driver.Robot.set_steering(-10)
@@ -127,6 +147,19 @@ little_turn
             driver.Robot.set_steering(10)
             distance = $turn_angle
         driver.Robot.forward(distance)
+
+little_turn_backward
+    use make_plan($step, $turn_angle, $_distance)
+    with
+        print "little_turn_backward", $turn_angle
+        driver.Robot.set_rf(0)
+        if $turn_angle > 180:
+            driver.Robot.set_steering(10)
+            distance = 360 - $turn_angle
+        else:
+            driver.Robot.set_steering(-10)
+            distance = $turn_angle
+        driver.Robot.backward(distance)
 
 bc_extras
     import driver
