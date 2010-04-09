@@ -45,7 +45,7 @@ class rotatable_sprite(pygame.sprite.Sprite):
         cx, cy = self.rect.center
         self.offset = lcx, lcy
         self.position = cx + lcx, cy + lcy
-        print self.name, "initial position", self.position
+        #print self.name, "initial position", self.position
 
     def update(self, fn, *args):
         getattr(self, fn)(*args)
@@ -57,9 +57,9 @@ class rotatable_sprite(pygame.sprite.Sprite):
         return self.rect
 
     def rotate(self, angle):
-        print self.name, "pre-rotated rect", self.rect, \
-                         "center", self.rect.center, \
-                         "at heading", self.heading
+        #print self.name, "pre-rotated rect", self.rect, \
+        #                 "center", self.rect.center, \
+        #                 "at heading", self.heading
 
         self.heading += angle
         self.image = pygame.transform.rotate(self.base_image, -self.heading)
@@ -144,7 +144,7 @@ class robot(pygame.sprite.RenderUpdates):
             ra = math.radians(self.heading)
             dx, dy = \
               self.direction * math.sin(ra), -self.direction * math.cos(ra)
-            print "heading", self.heading, "dx", dx, "dy", dy
+            #print "heading", self.heading, "dx", dx, "dy", dy
             ans = self.move_to((self.position[0] + dx, self.position[1] + dy))
             if self.heading_per_tick:
                 self.rotate(self.heading_per_tick * self.direction)
@@ -168,7 +168,7 @@ class robot(pygame.sprite.RenderUpdates):
         return distance
 
     def move_to(self, pos):
-        print "move_to", pos
+        #print "move_to", pos
         self.position = pos
         ans = None
         for s in self:
