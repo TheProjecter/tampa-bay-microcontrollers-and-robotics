@@ -1,0 +1,17 @@
+# rules.krb
+
+done
+    use get_plan($step, True)
+    when
+        check $step > 0
+        history.position(0, $x0, $y0)
+        history.position($step, $x1, $y1)
+        check abs($x0 - $x1) < 5 and abs($y0 - $y1) < 5
+
+
+
+bc_extras
+    import driver
+
+plan_extras
+    import driver
