@@ -21,14 +21,16 @@ Black = pygame.Color(0, 0, 0)
 from robot_simulator import robot, background
 
 Robot = robot.robot((Width + 150)//2 + 15, (Height + 200)//2 + 10)
-Car = robot.robot_sprite('car', Robot, robot.car_image())
 
 Obstacles = pygame.sprite.Group()
 Building = background.obstacle((Width - 150)//2, (Height - 200)//2, 150, 200)
+
+# border -- to keep the car from leaving the screen...
 background.obstacle(0, 0, 4, Height)
 background.obstacle(Width - 4, 0, 4, Height)
 background.obstacle(4, 0, Width - 8, 4)
 background.obstacle(4, Height - 4, Width - 8, 4)
+
 print "making Background mask"
 background.Background.make_mask()
 print "done making Background mask"

@@ -21,6 +21,9 @@ class background(pygame.Surface):
                 if self.get_at(pos) != robot_simulator.White:
                     self.mask.set_at(pos, 1)
 
+    def collides_with(self, sprite):
+        return self.mask.overlap_area(sprite.mask, sprite.rect.topleft)
+
 Background = background()
 
 def obstacle(x, y, width, height):

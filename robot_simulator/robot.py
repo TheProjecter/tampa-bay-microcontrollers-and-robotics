@@ -23,6 +23,9 @@ Car_components = (
     (robot_simulator.Black, (13, 18, 3, 6)),  # rr wheel
 )
 
+class CollisionError(StandardError):
+    pass
+
 class car_image(pygame.Surface):
     def __init__(self):
         super(car_image, self).__init__((16, 24))
@@ -48,6 +51,7 @@ class rotatable_sprite(pygame.sprite.Sprite):
         self.offset = lcx, lcy
         self.position = cx + lcx, cy + lcy
         #print self.name, "initial position", self.position
+        self.mask = pygame.mask.from_surface(self.image)
 
     def update(self, fn, *args):
         getattr(self, fn)(*args)
@@ -55,7 +59,10 @@ class rotatable_sprite(pygame.sprite.Sprite):
     def move_to(self, pos):
         px, py = self.position = pos
         lcx, lcy = self.offset
+
+        # This doesn't change self.image.get_rect()!
         self.rect.center = round(px - lcx), round(py - lcy)
+
         return self.rect
 
     def rotate(self, angle):
@@ -65,6 +72,7 @@ class rotatable_sprite(pygame.sprite.Sprite):
 
         self.heading += angle
         self.image = pygame.transform.rotate(self.base_image, -self.heading)
+        self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
 
         # This shows the influence of x at heading h.
@@ -131,6 +139,7 @@ class robot(pygame.sprite.RenderUpdates):
         self.heading_per_tick = 0.0
         self.direction = 0
         self.position = posx, posy
+        self.car = robot_sprite('car', self, car_image())
         self.rf = robot_sprite('range_finder', self, range_finder_image())
         self.remove(self.rf)
         self.rf_angle = None
@@ -171,11 +180,16 @@ class robot(pygame.sprite.RenderUpdates):
             dx, dy = \
               self.direction * math.sin(ra), -self.direction * math.cos(ra)
             #print "heading", self.heading, "dx", dx, "dy", dy
-            ans = self.move_to((self.position[0] + dx, self.position[1] + dy))
+            self.move_to((self.position[0] + dx, self.position[1] + dy))
             if self.heading_per_tick:
                 self.rotate(self.heading_per_tick * self.direction)
             self.draw_image()
-            return ans
+            if background.Background.collides_with(self.car):
+                raise CollisionError("Car collided at %d, %d" % self.position)
+            if self.rf_angle is not None and \
+               background.Background.collides_with(self.rf):
+                return True
+        return False
 
     def forward(self, distance):
         self.set_direction(1)
@@ -189,20 +203,15 @@ class robot(pygame.sprite.RenderUpdates):
         for i in xrange(distance):
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: sys.exit()
-            self.tick()
+            if self.tick(): return i
             time.sleep(0.005)
         return distance
 
     def move_to(self, pos):
         #print "move_to", pos
         self.position = pos
-        ans = None
         for s in self:
-            r = s.move_to(pos)
-            #print "move got", r, "from", s
-            if ans is None: ans = r
-            else: ans = ans.union(r)
-        return ans
+            s.move_to(pos)
 
     def rotate(self, angle):
         self.heading += angle
