@@ -22,7 +22,25 @@ class background(pygame.Surface):
                     self.mask.set_at(pos, 1)
 
     def collides_with(self, sprite):
-        return self.mask.overlap_area(sprite.mask, sprite.rect.topleft)
+        #return self.mask.overlap_area(sprite.mask, sprite.rect.topleft)
+        return self.mask.overlap(sprite.mask, sprite.rect.topleft)
+        #return sprite.mask.overlap(self.mask,
+        #                           (-sprite.rect.left, -sprite.rect.top))
+
+    def overlap_mask(self, sprite):
+        return self.mask.overlap_mask(sprite.mask, sprite.rect.topleft)
+        #return sprite.mask.overlap_mask(self.mask,
+        #                                (-sprite.rect.left, -sprite.rect.top))
+
+    def show_mask(self, mask, color = robot_simulator.Red):
+        size = width, height = self.get_size()
+        assert size == mask.get_size()
+        for x in range(width):
+            for y in range(height):
+                pos = x, y
+                if mask.get_at(pos):
+                    robot_simulator.Screen.set_at(pos, color)
+        pygame.display.update()
 
 Background = background()
 

@@ -35,11 +35,6 @@ print "making Background mask"
 background.Background.make_mask()
 print "done making Background mask"
 
-def test():
-    print "collide", pygame.sprite.collide_mask(Car, Building)
-    Robot.move(((Width - 150)//2, (Height - 200)//2))
-    print "collide", pygame.sprite.collide_mask(Car, Building)
-
 def start():
     global Screen
     Screen = pygame.display.set_mode(Size)
@@ -51,9 +46,11 @@ def start():
 def run():
     robot = start()
 
-    robot.set_steering(18.0)
+    robot.set_rf(-5)
+    robot.set_steering(-10.0)
     raw_input('waiting: ')
-    robot.forward(200)
+    print "went forward", robot.forward(200), "out of 200"
+    print "range is", robot.get_range()
 
     #raw_input('waiting: ')
     #for i in xrange(100):

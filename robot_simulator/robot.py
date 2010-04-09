@@ -164,6 +164,48 @@ class robot(pygame.sprite.RenderUpdates):
         self.rf_angle = angle
         self.draw_image()
 
+    def get_range(self):
+        if self.rf_angle is not None:
+            bck_mask = background.Background.mask
+            rf_mask = self.rf.mask
+            #print "rf_mask size", rf_mask.get_size()
+            bck_cx, bck_cy = self.rf.position
+            rf_cx, rf_cy = bck_cx - self.rf.rect.left, bck_cy - self.rf.rect.top
+            #print "bck center", (bck_cx, bck_cy), "rf center", (rf_cx, rf_cy)
+            def fix(n):
+                return max(0, int(round(n)))
+            def rf_set(x, y):
+                pos = x, y = int(round(rf_cx + x)), int(round(rf_cy + y))
+                size_x, size_y = rf_mask.get_size()
+                if x < 0 or x >= size_x or y < 0 or y >= size_y:
+                    return False
+                return rf_mask.get_at(pos)
+            def bck_set(x, y):
+                pos = x, y = int(round(bck_cx + x)), int(round(bck_cy + y))
+                size_x, size_y = bck_mask.get_size()
+                if x < 0 or x >= size_x or y < 0 or y >= size_y:
+                    return False
+                return bck_mask.get_at(pos)
+            def overlap(x, y):
+                return rf_set(x, y) and bck_set(x, y)
+            for radius \
+             in range(1, int(round(math.hypot(Range_width/2,
+                                              Range_distance)))
+                         + 1):
+                step_angle = 1.0 / radius
+                ra = 0.0
+                while ra < math.pi / 2.0:
+                    x = int(round(radius * math.sin(ra)))
+                    y = int(round(radius * math.cos(ra)))
+                    # check all 4 quadrants at once:
+                    if overlap( x,  y) or \
+                       overlap( x, -y) or \
+                       overlap(-x,  y) or \
+                       overlap(-x, -y):
+                        return radius
+                    ra += step_angle
+        return None
+
     def set_direction(self, dir):
         self.direction = dir
 
@@ -173,7 +215,7 @@ class robot(pygame.sprite.RenderUpdates):
     def draw_image(self):
         pygame.display.update(self.draw(robot_simulator.Screen))
 
-    def tick(self):
+    def tick(self, check_rf = True):
         if self.direction:
             self.erase_image()
             ra = math.radians(self.heading)
@@ -186,24 +228,24 @@ class robot(pygame.sprite.RenderUpdates):
             self.draw_image()
             if background.Background.collides_with(self.car):
                 raise CollisionError("Car collided at %d, %d" % self.position)
-            if self.rf_angle is not None and \
+            if check_rf and self.rf_angle is not None and \
                background.Background.collides_with(self.rf):
                 return True
         return False
 
     def forward(self, distance):
         self.set_direction(1)
-        return self.go(distance)
+        return self.go(distance, True)
 
     def backward(self, distance):
         self.set_direction(-1)
-        return self.go(distance)
+        return self.go(distance, False)
 
-    def go(self, distance):
+    def go(self, distance, check_rf = True):
         for i in xrange(distance):
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: sys.exit()
-            if self.tick(): return i
+            if self.tick(check_rf): return i
             time.sleep(0.005)
         return distance
 
