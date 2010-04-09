@@ -1,365 +1,126 @@
 # rules.krb
 
-saw_top_cw
-    foreach
-        layout.direction(cw)
-        history.quadrant($n, top_left)
-        history.quadrant($m, top_right)
-        check $n < $m
-    assert
-        history.saw_quadrant(top)
-
-saw_bottom_cw
-    foreach
-        layout.direction(cw)
-        history.quadrant($n, bottom_right)
-        history.quadrant($m, bottom_left)
-        check $n < $m
-    assert
-        history.saw_quadrant(bottom)
-
-saw_left_cw
-    foreach
-        layout.direction(cw)
-        history.quadrant($n, bottom_left)
-        history.quadrant($m, top_left)
-        check $n < $m
-    assert
-        history.saw_quadrant(left)
-
-saw_right_cw
-    foreach
-        layout.direction(cw)
-        history.quadrant($n, top_right)
-        history.quadrant($m, bottom_right)
-        check $n < $m
-    assert
-        history.saw_quadrant(right)
-
-saw_top_ccw
-    foreach
-        layout.direction(ccw)
-        history.quadrant($n, top_right)
-        history.quadrant($m, top_left)
-        check $n < $m
-    assert
-        history.saw_quadrant(top)
-
-saw_bottom_ccw
-    foreach
-        layout.direction(ccw)
-        history.quadrant($n, bottom_left)
-        history.quadrant($m, bottom_right)
-        check $n < $m
-    assert
-        history.saw_quadrant(bottom)
-
-saw_left_ccw
-    foreach
-        layout.direction(ccw)
-        history.quadrant($n, top_left)
-        history.quadrant($m, bottom_left)
-        check $n < $m
-    assert
-        history.saw_quadrant(left)
-
-saw_right_ccw
-    foreach
-        layout.direction(ccw)
-        history.quadrant($n, bottom_right)
-        history.quadrant($m, top_right)
-        check $n < $m
-    assert
-        history.saw_quadrant(right)
-
-done
-    use get_plan($step, True)
+closest_waypoint_by_direction
+    # Go to the closest unvisited waypoint in the direction of travel.
+    use get_plan($step, $plan)
     when
-        history.saw_quadrant(left)
-        history.saw_quadrant(right)
-        history.saw_quadrant(top)
-        history.saw_quadrant(bottom)
+        get_closest($step, get_waypoint_by_direction, $plan)
         special.claim_goal()
 
-not_done
-    use get_plan($step, False)
+closest_waypoint
+    # Wrap up any loose ends by ignoring the direction of travel, and just
+    # going to the closest unvisited waypoint.
+    use get_plan($step, $plan)
     when
-        !car_quadrant($step, $quadrant)
+        get_closest($step, get_waypoint, $plan)
+        special.claim_goal()
+
+done
+    # Can only get here is there are no unvisited waypoints left!
+    use get_plan($step, None)
+
+get_closest
+    use get_closest($step, $generator, $plan)
+    when
         python
-            print "adding quadrant", $quadrant
-            engine.add_universal_fact('history', 'quadrant', ($step, $quadrant))
-        !layout.direction($direction)
-        !get_plan2($step, $direction, $quadrant)
-            $$()
+            shortest_dist = 1000000000
+            plan = None
+        forall
+            $generator($step, $x, $y, $distance, $heading, $tentative_plan)
+            python
+                print "waypoint", ($x, $y), "$heading", $heading, \
+                      "$distance", $distance
+                if $distance < shortest_dist:
+                    shortest_dist = $distance
+                    plan = $tentative_plan
+        check plan is not None
+        $plan = plan
 
-up_left1
-    use get_plan2($step, cw, left)
+get_waypoint
+    use get_waypoint($step, $x, $y, $distance, $heading, $plan)
     when
-        !go_to_top($step)
-            $$()
+        layout.waypoint($x, $y)
+        notany
+            waypoint_already_visited($step, $x, $y)
+        get_dist_and_heading($step, $x, $y, $distance, $heading)
+        goto($step, $distance, $heading, $plan)
 
-up_left2
-    use get_plan2($step, cw, bottom_left)
+get_waypoint_by_direction
+    use get_waypoint_by_direction($step, $x, $y, $distance, $heading, $plan)
     when
-        !go_to_top($step)
-            $$()
+        get_waypoint($step, $x, $y, $distance, $heading, $plan)
+        check_direction($step, $heading)
 
-up_right1
-    use get_plan2($step, ccw, right)
+waypoint_already_visited
+    use waypoint_already_visited($step, $x, $y)
     when
-        !go_to_top($step)
-            $$()
+        history.position($_, $hx, $hy)
+        $distance = driver.distance(($hx, $hy), ($x, $y))
+        check $distance < 5
 
-up_right2
-    use get_plan2($step, ccw, bottom_right)
+get_dist_and_heading
+    use get_dist_and_heading($step, $x, $y, $distance, $heading)
     when
-        !go_to_top($step)
-            $$()
+        !history.position($step, $px, $py)
+        $distance = driver.distance(($px, $py), ($x, $y))
+        $heading = driver.heading(($px, $py), ($x, $y))
 
-down_left1
-    use get_plan2($step, ccw, left)
+check_direction
+    use check_direction($step, $heading)
     when
-        !go_to_bottom($step)
-            $$()
+        !layout.direction($dir)
+        check driver.direction($heading) == $dir
 
-down_left2
-    use get_plan2($step, ccw, top_left)
-    when
-        !go_to_bottom($step)
-            $$()
-
-down_right1
-    use get_plan2($step, cw, right)
-    when
-        !go_to_bottom($step)
-            $$()
-
-down_right2
-    use get_plan2($step, cw, top_right)
-    when
-        !go_to_bottom($step)
-            $$()
-
-left_top1
-    use get_plan2($step, ccw, top)
-    when
-        !go_to_left($step)
-            $$()
-
-left_top2
-    use get_plan2($step, ccw, top_right)
-    when
-        !go_to_left($step)
-            $$()
-
-left_bottom1
-    use get_plan2($step, cw, bottom)
-    when
-        !go_to_left($step)
-            $$()
-
-left_bottom2
-    use get_plan2($step, cw, bottom_right)
-    when
-        !go_to_left($step)
-            $$()
-
-right_top1
-    use get_plan2($step, cw, top)
-    when
-        !go_to_right($step)
-            $$()
-
-right_top2
-    use get_plan2($step, cw, top_left)
-    when
-        !go_to_right($step)
-            $$()
-
-right_bottom1
-    use get_plan2($step, ccw, bottom)
-    when
-        !go_to_right($step)
-            $$()
-
-right_bottom2
-    use get_plan2($step, ccw, bottom_left)
-    when
-        !go_to_right($step)
-            $$()
-
-car_on_top
-    use car_quadrant($step, top)
-    when
-        !layout.track($left, $top, $right, $bottom)
-        !layout.building($b_left, $b_top, $b_right, $b_bottom)
-        !history.position($step, $x, $y)
-        check $x - $left > 1
-        check $right - $x > 1
-        check $b_top - $y > 1
-
-car_on_bottom
-    use car_quadrant($step, bottom)
-    when
-        !layout.track($left, $top, $right, $bottom)
-        !layout.building($b_left, $b_top, $b_right, $b_bottom)
-        !history.position($step, $x, $y)
-        check $x - $left > 1
-        check $right - $x > 1
-        check $y - $b_bottom > 1
-
-car_on_left
-    use car_quadrant($step, left)
-    when
-        !layout.track($left, $top, $right, $bottom)
-        !layout.building($b_left, $b_top, $b_right, $b_bottom)
-        !history.position($step, $x, $y)
-        check $y - $top > 1
-        check $bottom - $y > 1
-        check $b_left - $x > 1
-
-car_on_right
-    use car_quadrant($step, right)
-    when
-        !layout.track($left, $top, $right, $bottom)
-        !layout.building($b_left, $b_top, $b_right, $b_bottom)
-        !history.position($step, $x, $y)
-        check $y - $top > 1
-        check $bottom - $y > 1
-        check $x - $b_right > 1
-
-car_on_top_left
-    use car_quadrant($step, top_left)
-    when
-        !layout.track($left, $top, $right, $bottom)
-        !history.position($step, $x, $y)
-        check $left - $x > -1
-        check $top - $y > -1
-
-car_on_top_right
-    use car_quadrant($step, top_right)
-    when
-        !layout.track($left, $top, $right, $bottom)
-        !history.position($step, $x, $y)
-        check $x - $right > -1
-        check $top - $y > -1
-
-car_on_bottom_left
-    use car_quadrant($step, bottom_left)
-    when
-        !layout.track($left, $top, $right, $bottom)
-        !history.position($step, $x, $y)
-        check $left - $x > -1
-        check $y - $bottom > -1
-
-car_on_bottom_right
-    use car_quadrant($step, bottom_right)
-    when
-        !layout.track($left, $top, $right, $bottom)
-        !history.position($step, $x, $y)
-        check $x - $right > -1
-        check $y - $bottom > -1
-
-go_to_top
-    use go_to_top($step)
-    when
-        python print "go_to_top"
-        !layout.track($left, $top, $right, $bottom)
-        !point_car($step, 0) as $turn_car
-        !go($turn_car, 1, $top, False)
-            $$()
-
-go_to_bottom
-    use go_to_bottom($step)
-    when
-        python print "go_to_bottom"
-        !layout.track($left, $top, $right, $bottom)
-        !point_car($step, 180) as $turn_car
-        !go($turn_car, 1, $bottom, True)
-            $$()
-
-go_to_left
-    use go_to_left($step)
-    when
-        python print "go_to_left"
-        !layout.track($left, $top, $right, $bottom)
-        !point_car($step, 270) as $turn_car
-        !go($turn_car, 0, $left, False)
-            $$()
-
-go_to_right
-    use go_to_right($step)
-    when
-        python print "go_to_right"
-        !layout.track($left, $top, $right, $bottom)
-        !point_car($step, 90) as $turn_car
-        !go($turn_car, 0, $right, True)
-            $$()
-
-point_car
-    use point_car($step, $heading)
+goto
+    use goto($step, $distance, $heading, $plan)
     when
         !history.heading($step, $h)
         $turn_angle = ($heading - $h) % 360
-        python print "point_car step", $step, "want", $heading, "at", $h, "turn_angle", $turn_angle
-        !turn($step, $turn_angle)
-            return $$()
+        make_plan($step, $turn_angle, $distance) as $plan
 
-turn_nada
-    use turn($step, $turn_angle)
+goto_direct
+    use make_plan($step, $turn_angle, $distance)
     when
-        check $turn_angle < 1.4 or $turn_angle > 360 - 1.4
+        check $turn_angle <= 1 or $turn_angle >= 359
         special.claim_goal()
     with
-        print "turn_nada"
-        return driver.Robot.position
+        print "forward", $distance
+        driver.Robot.set_steering(0)
+        driver.Robot.set_rf(0)
+        driver.Robot.forward($distance)
 
-turn_left
-    use turn($step, $turn_angle)
+big_turn
+    use make_plan($step, $turn_angle, $_distance)
     when
-        check $turn_angle >= 180
+        check 45 <= $turn_angle <= 315
+        special.claim_goal()
     with
-        angle = 360 - $turn_angle
-        print "turn_left", angle
-        driver.Robot.set_steering(-angle)
-        if driver.Robot.forward(10) != 10:
-            raise PlanFailed
-        return driver.Robot.position
+        print "big_turn", $turn_angle
+        driver.Robot.set_rf(0)
+        if $turn_angle > 180:
+            driver.Robot.set_steering(-45)
+            distance = (360 - $turn_angle) / 4.5
+        else:
+            driver.Robot.set_steering(45)
+            distance = $turn_angle / 4.5
+        driver.Robot.forward(distance)
 
-turn_right
-    use turn($step, $turn_angle)
-    when
-        check $turn_angle <= 180
+little_turn
+    use make_plan($step, $turn_angle, $_distance)
     with
-        print "turn_right", $turn_angle
-        driver.Robot.set_steering($turn_angle)
-        if driver.Robot.forward(10) != 10:
-            raise PlanFailed
-        return driver.Robot.position
-
-go
-    use go($turn_car, $index, $destination, $dest_larger)
-    with
-        print "go"
-        try:
-            pos = $turn_car()
-            if $dest_larger:
-                distance = $destination - pos[$index]
-            else:
-                distance = pos[$index] - $destination
-            if distance > 0:
-                driver.Robot.set_rf(0)
-                driver.Robot.set_steering(0)
-                driver.Robot.forward(distance)
-        except PlanFailed:
-            print "PlanFailed"
-
+        print "little_turn", $turn_angle
+        driver.Robot.set_rf(0)
+        if $turn_angle > 180:
+            driver.Robot.set_steering(-10)
+            distance = 360 - $turn_angle
+        else:
+            driver.Robot.set_steering(10)
+            distance = $turn_angle
+        driver.Robot.forward(distance)
 
 bc_extras
-    import sys
     import driver
 
 plan_extras
     import driver
 
-    class PlanFailed(Exception): pass
