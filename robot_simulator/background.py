@@ -49,4 +49,5 @@ def obstacle(x, y, width, height):
     image = pygame.Surface((width, height))
     image.fill(robot_simulator.Blue)
     Background.blit(image, rect)
+    return rect
 

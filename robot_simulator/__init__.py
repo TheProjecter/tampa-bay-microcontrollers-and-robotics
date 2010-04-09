@@ -20,7 +20,7 @@ Black = pygame.Color(0, 0, 0)
 
 from robot_simulator import robot, background
 
-Robot = robot.robot((Width + 150)//2 + 15, (Height + 200)//2 + 10)
+Robot = robot.robot((Width + 150)//2 + 40, (Height + 200)//2 + 40)
 
 Obstacles = pygame.sprite.Group()
 Building = background.obstacle((Width - 150)//2, (Height - 200)//2, 150, 200)

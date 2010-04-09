@@ -70,7 +70,7 @@ class rotatable_sprite(pygame.sprite.Sprite):
         #                 "center", self.rect.center, \
         #                 "at heading", self.heading
 
-        self.heading += angle
+        self.heading = (self.heading + angle) % 360
         self.image = pygame.transform.rotate(self.base_image, -self.heading)
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
@@ -242,7 +242,7 @@ class robot(pygame.sprite.RenderUpdates):
         return self.go(distance, False)
 
     def go(self, distance, check_rf = True):
-        for i in xrange(distance):
+        for i in xrange(int(round(distance))):
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: sys.exit()
             if self.tick(check_rf): return i
@@ -256,7 +256,7 @@ class robot(pygame.sprite.RenderUpdates):
             s.move_to(pos)
 
     def rotate(self, angle):
-        self.heading += angle
+        self.heading = (self.heading + angle) % 360
         for s in self:
             s.rotate(angle)
 
