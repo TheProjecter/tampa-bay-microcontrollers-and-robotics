@@ -2,8 +2,7 @@ syntax: glob
 
 *.pyc
 *.pyo
-testdoc_*.py
-testall_*.py
+compiled_krb
 .pyhist
 .*.swp
 *.egg-info
