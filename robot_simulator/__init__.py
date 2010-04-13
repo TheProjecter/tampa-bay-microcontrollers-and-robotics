@@ -31,12 +31,15 @@ background.obstacle(Width - 4, 0, 4, Height)
 background.obstacle(4, 0, Width - 8, 4)
 background.obstacle(4, Height - 4, Width - 8, 4)
 
-print "making Background mask"
-background.Background.make_mask()
-print "done making Background mask"
+# Add obstacles here!
+
+# Done adding obstacles...
 
 def start():
     global Screen
+    print "making Background mask"
+    background.Background.make_mask()
+    print "done making Background mask"
     Screen = pygame.display.set_mode(Size)
     Screen.blit(background.Background, (0, 0))
     Robot.draw(Screen)
