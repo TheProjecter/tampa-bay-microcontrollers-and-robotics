@@ -215,7 +215,7 @@ class robot(pygame.sprite.RenderUpdates):
     def draw_image(self):
         pygame.display.update(self.draw(robot_simulator.Screen))
 
-    def tick(self, check_rf = True):
+    def tick(self, check_rf = True, range = None):
         if self.direction:
             self.erase_image()
             ra = math.radians(self.heading)
@@ -229,23 +229,24 @@ class robot(pygame.sprite.RenderUpdates):
             if background.Background.collides_with(self.car):
                 raise CollisionError("Car collided at %d, %d" % self.position)
             if check_rf and self.rf_angle is not None and \
-               background.Background.collides_with(self.rf):
+               background.Background.collides_with(self.rf) and \
+               (range is None or self.get_range() < range):
                 return True
         return False
 
-    def forward(self, distance):
+    def forward(self, distance, range = None):
         self.set_direction(1)
-        return self.go(distance, True)
+        return self.go(distance, True, range)
 
     def backward(self, distance):
         self.set_direction(-1)
         return self.go(distance, False)
 
-    def go(self, distance, check_rf = True):
+    def go(self, distance, check_rf = True, range = None):
         for i in xrange(int(round(distance))):
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: sys.exit()
-            if self.tick(check_rf): return i
+            if self.tick(check_rf, range): return i
             time.sleep(0.005)
         return distance
 
