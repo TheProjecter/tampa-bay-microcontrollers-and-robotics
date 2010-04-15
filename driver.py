@@ -46,7 +46,7 @@ def run():
     Engine.add_universal_fact('layout', 'car',
                               Robot.car.rect[2:])
     Engine.add_universal_fact('layout', 'car_logical_center',
-                              Robot.car.image.logical_center)
+                              Robot.car.base_image.logical_center)
     Engine.add_universal_fact('layout', 'range_finder',
                               Robot.rf.rect[2:])
     safety_factor = max(Robot.car.rect.size) + 5

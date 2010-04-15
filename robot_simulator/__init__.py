@@ -42,6 +42,8 @@ def start():
     print "done making Background mask"
     Screen = pygame.display.set_mode(Size)
     Screen.blit(background.Background, (0, 0))
+    #Robot.move_to(((Width + 150)//2 + 40, (Height + 200)//2 - 80))
+    #Robot.rotate(180)
     Robot.draw(Screen)
     pygame.display.flip()
     return Robot
