@@ -1,4 +1,4 @@
-# driver.py
+# expert.py
 
 import math
 import sys
@@ -10,10 +10,11 @@ if __name__ == "__main__":
 else:
     from pyke import knowledge_engine, krb_traceback
     import robot_simulator
-    Engine = knowledge_engine.engine(__file__)
 
 def run():
     global Robot, Building_center
+
+    engine = knowledge_engine.engine(__file__)
 
     Robot = robot_simulator.start()
 
@@ -30,7 +31,7 @@ def run():
     #   layout.direction(cc|ccw)
     #   layout.waypoint(x, y)
 
-    Engine.add_universal_fact('layout', 'board',
+    engine.add_universal_fact('layout', 'board',
                               (robot_simulator.Width, robot_simulator.Height))
     corners = left, top, right, bottom = \
              robot_simulator.Building.left, \
@@ -38,49 +39,49 @@ def run():
              robot_simulator.Building.right, \
              robot_simulator.Building.bottom
     print "building corners", corners
-    Engine.add_universal_fact('layout', 'building',
+    engine.add_universal_fact('layout', 'building',
                               corners)
     Building_center = robot_simulator.Building.center
-    Engine.add_universal_fact('layout', 'building_center',
+    engine.add_universal_fact('layout', 'building_center',
                               Building_center)
-    Engine.add_universal_fact('layout', 'car',
+    engine.add_universal_fact('layout', 'car',
                               Robot.car.rect[2:])
-    Engine.add_universal_fact('layout', 'car_logical_center',
+    engine.add_universal_fact('layout', 'car_logical_center',
                               Robot.car.base_image.logical_center)
-    Engine.add_universal_fact('layout', 'range_finder',
+    engine.add_universal_fact('layout', 'range_finder',
                               Robot.rf.rect[2:])
     safety_factor = max(Robot.car.rect.size) + 5
-    Engine.add_universal_fact('layout', 'safety_factor',
+    engine.add_universal_fact('layout', 'safety_factor',
                               (safety_factor,))
     track = (left - safety_factor,
              top - safety_factor,
              right + safety_factor,
              bottom + safety_factor)
     print "track", track
-    Engine.add_universal_fact('layout', 'track', track)
+    engine.add_universal_fact('layout', 'track', track)
     initial_direction = direction(Robot.heading)
     print "initial_direction", initial_direction
-    Engine.add_universal_fact('layout', 'direction', (initial_direction,))
-    Engine.add_universal_fact('layout', 'waypoint', (track[0], track[1]))
-    Engine.add_universal_fact('layout', 'waypoint', (track[0], track[3]))
-    Engine.add_universal_fact('layout', 'waypoint', (track[2], track[1]))
-    Engine.add_universal_fact('layout', 'waypoint', (track[2], track[3]))
-    Engine.add_universal_fact('layout', 'waypoint', Robot.position)
+    engine.add_universal_fact('layout', 'direction', (initial_direction,))
+    engine.add_universal_fact('layout', 'waypoint', (track[0], track[1]))
+    engine.add_universal_fact('layout', 'waypoint', (track[0], track[3]))
+    engine.add_universal_fact('layout', 'waypoint', (track[2], track[1]))
+    engine.add_universal_fact('layout', 'waypoint', (track[2], track[3]))
+    engine.add_universal_fact('layout', 'waypoint', Robot.position)
 
     for step in itertools.count():
         x, y = Robot.position
         print "Robot position %d, %d" % Robot.position
-        Engine.add_universal_fact('history', 'position', (step, x, y))
+        engine.add_universal_fact('history', 'position', (step, x, y))
         print "Robot heading %d" % Robot.heading
-        Engine.add_universal_fact('history', 'heading', (step, Robot.heading))
-        Engine.add_universal_fact('history', 'car_radial',
+        engine.add_universal_fact('history', 'heading', (step, Robot.heading))
+        engine.add_universal_fact('history', 'car_radial',
                                   (step,
                                    heading(Building_center, Robot.position)))
-        Engine.reset()
-        Engine.activate('rules')
+        engine.reset()
+        engine.activate('rules')
         print "proving step", step
         try:
-            vars, _ = Engine.prove_1_goal('rules.get_plan($step, $plan)',
+            vars, _ = engine.prove_1_goal('rules.get_plan($step, $plan)',
                                           step=step)
         except:
             krb_traceback.print_exc()
@@ -91,7 +92,7 @@ def run():
             break
         ans = plan()
         print "plan done, Robot at (%d, %d)" % Robot.position
-        Engine.add_universal_fact('history', 'result', (step, ans))
+        engine.add_universal_fact('history', 'result', (step, ans))
 
 def heading(from_pos, to_pos):
     r'''Returns heading in degrees from from_pos to to_pos.

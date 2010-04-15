@@ -58,28 +58,28 @@ first_pos_already_visited
         special.claim_goal()
         history.position($step, $hx, $hy)
         check $step > 4
-        $distance = driver.distance(($hx, $hy), ($x, $y))
+        $distance = expert.distance(($hx, $hy), ($x, $y))
         check $distance < 5
 
 waypoint_already_visited
     use waypoint_already_visited($step, $x, $y)
     when
         history.position($_, $hx, $hy)
-        $distance = driver.distance(($hx, $hy), ($x, $y))
+        $distance = expert.distance(($hx, $hy), ($x, $y))
         check $distance < 5
 
 get_dist_and_heading
     use get_dist_and_heading($step, $x, $y, $distance, $heading)
     when
         !history.position($step, $px, $py)
-        $distance = driver.distance(($px, $py), ($x, $y))
-        $heading = driver.heading(($px, $py), ($x, $y))
+        $distance = expert.distance(($px, $py), ($x, $y))
+        $heading = expert.heading(($px, $py), ($x, $y))
 
 check_direction
     use check_direction($step, $heading)
     when
         !layout.direction($dir)
-        check driver.direction($heading) == $dir
+        check expert.direction($heading) == $dir
 
 goto
     use goto($step, $distance, $heading, $plan)
@@ -95,9 +95,9 @@ goto_direct
         special.claim_goal()
     with
         print "forward", $distance
-        driver.Robot.set_steering(0)
-        driver.Robot.set_rf(0)
-        driver.Robot.forward($distance)
+        expert.Robot.set_steering(0)
+        expert.Robot.set_rf(0)
+        expert.Robot.forward($distance)
 
 big_turn_forward
     use make_plan($step, $turn_angle, $distance)
@@ -107,14 +107,14 @@ big_turn_forward
         special.claim_goal()
     with
         print "big_turn_forward", $turn_angle
-        driver.Robot.set_rf(0)
+        expert.Robot.set_rf(0)
         if $turn_angle > 180:
-            driver.Robot.set_steering(-45)
+            expert.Robot.set_steering(-45)
             distance = (360 - $turn_angle) / 4.5
         else:
-            driver.Robot.set_steering(45)
+            expert.Robot.set_steering(45)
             distance = $turn_angle / 4.5
-        driver.Robot.forward(distance)
+        expert.Robot.forward(distance)
 
 big_turn_backward
     use make_plan($step, $turn_angle, $_distance)
@@ -123,14 +123,14 @@ big_turn_backward
         special.claim_goal()
     with
         print "big_turn_backward", $turn_angle
-        driver.Robot.set_rf(0)
+        expert.Robot.set_rf(0)
         if $turn_angle > 180:
-            driver.Robot.set_steering(45)
+            expert.Robot.set_steering(45)
             distance = (360 - $turn_angle) / 4.5
         else:
-            driver.Robot.set_steering(-45)
+            expert.Robot.set_steering(-45)
             distance = $turn_angle / 4.5
-        driver.Robot.backward(distance)
+        expert.Robot.backward(distance)
 
 little_turn_forward
     use make_plan($step, $turn_angle, $distance)
@@ -139,31 +139,31 @@ little_turn_forward
         special.claim_goal()
     with
         print "little_turn_forward", $turn_angle
-        driver.Robot.set_rf(0)
+        expert.Robot.set_rf(0)
         if $turn_angle > 180:
-            driver.Robot.set_steering(-10)
+            expert.Robot.set_steering(-10)
             distance = 360 - $turn_angle
         else:
-            driver.Robot.set_steering(10)
+            expert.Robot.set_steering(10)
             distance = $turn_angle
-        driver.Robot.forward(distance)
+        expert.Robot.forward(distance)
 
 little_turn_backward
     use make_plan($step, $turn_angle, $_distance)
     with
         print "little_turn_backward", $turn_angle
-        driver.Robot.set_rf(0)
+        expert.Robot.set_rf(0)
         if $turn_angle > 180:
-            driver.Robot.set_steering(10)
+            expert.Robot.set_steering(10)
             distance = 360 - $turn_angle
         else:
-            driver.Robot.set_steering(-10)
+            expert.Robot.set_steering(-10)
             distance = $turn_angle
-        driver.Robot.backward(distance)
+        expert.Robot.backward(distance)
 
 bc_extras
-    import driver
+    from driver import expert
 
 plan_extras
-    import driver
+    from driver import expert
 
