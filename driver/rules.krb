@@ -102,34 +102,34 @@ goto_direct
 big_turn_forward
     use make_plan($step, $turn_angle, $distance)
     when
-        check 45 <= $turn_angle <= 315
+        check 10 <= $turn_angle <= 350
         check $distance > 30
         special.claim_goal()
     with
         print "big_turn_forward", $turn_angle
         expert.Robot.set_rf(0)
         if $turn_angle > 180:
-            expert.Robot.set_steering(-45)
-            distance = (360 - $turn_angle) / 4.5
+            expert.Robot.set_steering(-20)
+            distance = (360 - $turn_angle) / 2.0
         else:
-            expert.Robot.set_steering(45)
-            distance = $turn_angle / 4.5
+            expert.Robot.set_steering(20)
+            distance = $turn_angle / 2.0
         expert.Robot.forward(distance)
 
 big_turn_backward
     use make_plan($step, $turn_angle, $_distance)
     when
-        check 45 <= $turn_angle <= 315
+        check 10 <= $turn_angle <= 350
         special.claim_goal()
     with
         print "big_turn_backward", $turn_angle
         expert.Robot.set_rf(0)
         if $turn_angle > 180:
-            expert.Robot.set_steering(45)
-            distance = (360 - $turn_angle) / 4.5
+            expert.Robot.set_steering(20)
+            distance = (360 - $turn_angle) / 2.0
         else:
-            expert.Robot.set_steering(-45)
-            distance = $turn_angle / 4.5
+            expert.Robot.set_steering(-20)
+            distance = $turn_angle / 2.0
         expert.Robot.backward(distance)
 
 little_turn_forward

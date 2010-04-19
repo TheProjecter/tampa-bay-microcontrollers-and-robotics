@@ -14,6 +14,7 @@ Range_width, Range_distance = 20, 30
 
 Car_body = (3, 2, 10, 20)
 
+# The entire car is 16x24.
 Car_components = (
     (robot_simulator.Green, Car_body),        # main body
     (robot_simulator.Black, (6, 4, 4, 4)),    # front mark
@@ -36,7 +37,7 @@ class car_image(pygame.Surface):
 
         # when heading is 0:
         #   logical center = image center + logical_center
-        self.logical_center = (0, -10)
+        self.logical_center = (0, 9)
 
 class rotatable_sprite(pygame.sprite.Sprite):
     def __init__(self, name, group, image):
@@ -46,7 +47,7 @@ class rotatable_sprite(pygame.sprite.Sprite):
         self.heading = 0.0
         self.image = image
         self.rect = self.image.get_rect()
-        lcx, lcy = self.base_image.logical_center
+        self.logical_center = lcx, lcy = self.base_image.logical_center
         cx, cy = self.rect.center
         self.offset = lcx, lcy
         self.position = cx + lcx, cy + lcy
@@ -105,7 +106,7 @@ class rotatable_sprite(pygame.sprite.Sprite):
 
         ra = math.radians(self.heading)
         sin, cos = math.sin(ra), math.cos(ra)
-        x, y = self.base_image.logical_center
+        x, y = self.logical_center
         #print self.name, "logical_center offset at heading 0", (x, y)
         self.offset = x * cos - y * sin, y * cos + x * sin
         #print self.name, "new logical center offset", self.offset
@@ -130,7 +131,10 @@ class range_finder_image(pygame.Surface):
 
         # when heading is 0:
         #   logical center = image center + logical_center
-        self.logical_center = 0, Range_distance/2
+        self.logical_center = 0, 19 + Range_distance/2
+
+        # relative to logical center in y
+        self.pivot_offset = 19
 
 class robot(pygame.sprite.RenderUpdates):
     def __init__(self, posx, posy):
@@ -152,24 +156,43 @@ class robot(pygame.sprite.RenderUpdates):
 
         An angle of None turns off the range finder.
         '''
-        self.erase_image()
-        if angle is None:
-            if self.rf_angle is not None:
-                self.remove(self.rf)
-        else:
-            if self.rf_angle is None:
-                self.add(self.rf)
+        if angle != self.rf_angle:
+            self.erase_image()
+            if angle is None:
+                if self.rf_angle is not None:
+                    self.remove(self.rf)
+            else:
+                if self.rf_angle is None:
+                    self.add(self.rf)
+                ra = math.radians(angle)
+                sin, cos = math.sin(ra), math.cos(ra)
+                lx, ly = self.rf.base_image.logical_center
+                py = self.rf.base_image.pivot_offset
+                offset_x = py * sin
+                offset_y = py - py * cos
+                self.rf.logical_center = lx + offset_x, ly - offset_y
+
+                # sets self.rf.offset:
+                self.rf.rotate(self.heading + angle - self.rf.heading)
+
                 self.rf.move_to(self.position)
-            self.rf.rotate(self.heading + angle - self.rf.heading)
-        self.rf_angle = angle
-        self.draw_image()
+            self.rf_angle = angle
+            self.draw_image()
 
     def get_range(self):
+        r'''Returns the distance to the closest detected obstacle.
+
+        Returns 100 if no obstacles detected.
+        '''
         if self.rf_angle is not None:
             bck_mask = background.Background.mask
             rf_mask = self.rf.mask
             #print "rf_mask size", rf_mask.get_size()
             bck_cx, bck_cy = self.rf.position
+            ra = math.radians(self.heading)
+            pivot_offset = self.rf.base_image.pivot_offset
+            bck_cx += pivot_offset * math.sin(ra)
+            bck_cy -= pivot_offset * math.cos(ra)
             rf_cx, rf_cy = bck_cx - self.rf.rect.left, bck_cy - self.rf.rect.top
             #print "bck center", (bck_cx, bck_cy), "rf center", (rf_cx, rf_cy)
             def fix(n):
@@ -204,7 +227,7 @@ class robot(pygame.sprite.RenderUpdates):
                        overlap(-x, -y):
                         return radius
                     ra += step_angle
-        return None
+        return 100
 
     def set_direction(self, dir):
         self.direction = dir
