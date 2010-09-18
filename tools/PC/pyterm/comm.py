@@ -143,7 +143,7 @@ def print_flags2(settings, flags):
             print "%s=%d" % (name, byte),
     print
 
-def stty(fd, timeout = 0, baud = B57600, #termios.B57600,
+def stty(fd, timeout = 0, baud = B57600,
          hupcl = True, cread = True, clocal = False, crtscts = False,
          inpck = False):
     r'''
@@ -176,7 +176,7 @@ def stty(fd, timeout = 0, baud = B57600, #termios.B57600,
     ]
     termios.tcsetattr(fd, termios.TCSANOW, settings)
 
-def open(devnum=0, timeout = 0, baud = B57600, #termios.B57600,
+def open(devnum=0, timeout = 0, baud = B500000,
          hupcl = True, cread = True, clocal = False, crtscts = False,
          inpck = False):
     fd = os.open('/dev/ttyUSB' + repr(devnum), os.O_RDWR | os.O_NOCTTY)
@@ -200,3 +200,12 @@ def run(devnum = 0, command = 'h'):
         while True:
             sys.stdout.write(os.read(f, 1))
 
+def repeat(devnum = 0, s = '\x55', **kws):
+    with osclosing(open(devnum, **kws)) as f:
+        while True:
+            write(f, s)
+
+def cycle(devnum = 0, **kws):
+    s = ''.join(chr(i) for i in range(256))
+    print "cycling", repr(s)
+    repeat(devnum, s, **kws)

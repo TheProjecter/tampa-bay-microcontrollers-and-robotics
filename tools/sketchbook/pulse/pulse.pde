@@ -1,16 +1,7 @@
+// pulse
 
+// This header is in /usr/lib/avr/include on Linux and maps to <avr/iom328p.h>
 #include <avr/io.h>
-
-void
-setup(void) {
-  Serial.begin(57600);
-  //pinMode(11, OUTPUT);  // OCR2A, PB3
-  pinMode(3, OUTPUT);  // OCR2B, PD3
-  TIMSK2 = 0;
-  ASSR = 0;
-  //TCCR2A = 0x42;
-  TCCR2A = 0x23;
-}
 
 unsigned long
 calc_ocr2a(unsigned long rate, unsigned N) {
@@ -55,12 +46,25 @@ set_rate(unsigned long rate, unsigned long pw_clocks) {
   }
 }
 
-unsigned long Rate = 100000;
-unsigned long PW_clocks = 16;
+unsigned long Rate = 12500;
+unsigned long PW_clocks = 16 * 40;
 unsigned long Num;
 
 void
+setup(void) {
+  Serial.begin(57600);
+  //pinMode(11, OUTPUT);  // OCR2A, PB3
+  pinMode(3, OUTPUT);  // OCR2B, PD3
+  TIMSK2 = 0;
+  ASSR = 0;
+  //TCCR2A = 0x42;
+  TCCR2A = 0x23;
+  set_rate(Rate, PW_clocks);
+}
+
+void
 loop(void) {
+  /***
   if (Serial.available()) {
     byte c = Serial.read();
     if (c == '.') {
@@ -73,4 +77,5 @@ loop(void) {
       Num = 0;
     } else Num = 10 * Num + (c - '0');
   }
+  ***/
 }

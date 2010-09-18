@@ -1,4 +1,3 @@
-
 // digital_oscope
 
 // This header is in /usr/lib/avr/include on Linux and maps to <avr/iom328p.h>
