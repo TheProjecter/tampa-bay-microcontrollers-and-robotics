@@ -1,12 +1,13 @@
 // stationary_platform.pde
 
-/********************************************
-  pinMode(3, OUTPUT);     // IrDA TX
-  pinMode(4, OUTPUT);     // IrDA SD
-  pinMode(6, INPUT);      // slide switch
-  pinMode(7, INPUT);      // push button
-  pinMode(8, INPUT);      // magnetic pickup
- ********************************************/
+// These are grouped on the same port (PORTD) so they can be sampled together:
+#define SLIDE_SWITCH_PIN        4
+#define PUSH_BUTTON_PIN         5
+#define MAGNETIC_PICKUP_PIN     7
+
+// The IRDA_TX_PIN is bit 0 of PORTB:
+#define IRDA_TX_PIN             8
+#define IRDA_SD_PIN             9
 
 // This header is in /usr/lib/avr/include on Linux and maps to <avr/iom328p.h>
 #include <avr/io.h>
@@ -29,25 +30,25 @@ setup(void) {
   UCSR0B = 0x18;  // enable receiver, enable transmitter, disable all intr
 
   // Set up IrDA:
-  pinMode(3, OUTPUT);     // IrDA TX
-  pinMode(4, OUTPUT);     // IrDA SD
-  digitalWrite(3, LOW);   // default LOW
+  pinMode(IRDA_TX_PIN, OUTPUT);     // IrDA TX
+  pinMode(IRDA_SD_PIN, OUTPUT);     // IrDA SD
+  digitalWrite(IRDA_TX_PIN, LOW);   // default LOW
 
   // Set IrDA to high-speed mode:
-  digitalWrite(4, HIGH);  // SD
-  digitalWrite(3, HIGH);  // TX
+  digitalWrite(IRDA_SD_PIN, HIGH);  // SD
+  digitalWrite(IRDA_TX_PIN, HIGH);  // TX
   delayMicroseconds(2);
-  digitalWrite(4, LOW);  // SD
+  digitalWrite(IRDA_SD_PIN, LOW);  // SD
   delayMicroseconds(2);
-  digitalWrite(3, LOW);  // TX
+  digitalWrite(IRDA_TX_PIN, LOW);  // TX
 
   // Set up input pins:
-  pinMode(6, INPUT);      // slide switch
-  digitalWrite(6, HIGH);  // enable pull-up resistor
-  pinMode(7, INPUT);      // push button
-  digitalWrite(7, HIGH);  // enable pull-up resistor
-  pinMode(8, INPUT);      // magnetic pickup
-  digitalWrite(8, HIGH);  // enable pull-up resistor
+  pinMode(SLIDE_SWITCH_PIN, INPUT);         // slide switch
+  digitalWrite(SLIDE_SWITCH_PIN, HIGH);     // enable pull-up resistor
+  pinMode(PUSH_BUTTON_PIN, INPUT);          // push button
+  digitalWrite(PUSH_BUTTON_PIN, HIGH);      // enable pull-up resistor
+  pinMode(MAGNETIC_PICKUP_PIN, INPUT);      // magnetic pickup
+  digitalWrite(MAGNETIC_PICKUP_PIN, HIGH);  // enable pull-up resistor
   
   // Set up timer 2 to tick at .5 uSec/tick.
   TIMSK0 = 0;     // disable interrupts
@@ -60,16 +61,16 @@ setup(void) {
 
 byte Buffer[2][50][16];
 
-#define send_bit(time)           \
-  PORTD = bit;                   \
-  bit = (n & 1) ? 0 : 0x08;      \
-  n >>= 1;                       \
-  PORTD = 0;                     \
+#define send_bit(time)    \
+  PORTD = bit;            \
+  bit = ~(n & 1);         \
+  n >>= 1;                \
+  PORTD = 0;              \
   while (TCNT2 < time) 
 
 void
 send_byte(byte n) {
-  byte bit = 0x08;
+  byte bit = 0x01;
   GTCCR = 2;         // reset timer2 prescalar
   TCNT2 = 0;         // reset timer2 counter
   send_bit(8+1);     // start bit

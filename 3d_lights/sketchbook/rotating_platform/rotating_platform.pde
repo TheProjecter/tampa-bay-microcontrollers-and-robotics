@@ -73,7 +73,7 @@ ISR(TIMER2_COMPA_vect) {
 
 byte Column;
 byte Loop_again;
-byte B1, B2;
+byte Byte1, Byte2;
 
 ISR(TIMER2_COMPB_vect) {
   TIMSK2 = 0;     // disable compare match OCR2A and OCR2B interrupt
@@ -163,7 +163,7 @@ setup(void) {
 
   byte c = PINC;  // read push buttons
   PORTC = 0;      // all outputs LOW
-  DDRC = 0x0x3F;  // 6 output pins (0-5 out)
+  DDRC = 0x3F;    // 6 output pins (0-5 out)
 
   if (c & 0x02) led_test();
   if (c & 0x04) comm_test();
@@ -176,10 +176,10 @@ loop(void) {
   while (Loop_again) {
     Loop_again = 0;     // set by OCR2B timer interrupt if .15mSec passes
     while (!(UCSR0A & (1 << RXC0))) ;
-    B1 = UDR0;
+    Byte1 = UDR0;
     while (!(UCSR0A & (1 << RXC0))) ;
-    B2 = UDR0;
+    Byte2 = UDR0;
   }
-  set_column(B1, B2, Column);
+  set_column(Byte1, Byte2, Column);
   Column = (Column - 1) & 0x07;
 }
