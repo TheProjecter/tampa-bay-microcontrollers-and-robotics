@@ -9,8 +9,16 @@
 #define IRDA_TX_PIN             8
 #define IRDA_SD_PIN             9
 
+// The CTS pin is on its own port so it doesn't get overwritten by other
+// writes:
+#define CTS_PIN                 14
+
 // This header is in /usr/lib/avr/include on Linux and maps to <avr/iom328p.h>
 #include <avr/io.h>
+
+unsigned long Start_mag_time;   // time (in uSec) of last magnetic pulse
+unsigned long Rotation;         // uSec/rotation
+unsigned int  Slice;            // uSec/slice
 
 void
 help(void) {
@@ -49,7 +57,11 @@ setup(void) {
   digitalWrite(PUSH_BUTTON_PIN, HIGH);      // enable pull-up resistor
   pinMode(MAGNETIC_PICKUP_PIN, INPUT);      // magnetic pickup
   digitalWrite(MAGNETIC_PICKUP_PIN, HIGH);  // enable pull-up resistor
-  
+
+  // Set up CTS pin:
+  pinMode(CTS_PIN, OUTPUT);
+  digitalWrite(CTS_PIN, LOW);               // enable PC to send data
+
   // Set up timer 2 to tick at .5 uSec/tick.
   TIMSK0 = 0;     // disable interrupts
   TCCR2A = 0;     // WGM = 0 (normal mode)
@@ -59,29 +71,115 @@ setup(void) {
   help();
 }
 
-byte Buffer[2][50][16];
+byte Buffer[2][800];
+byte Recv_buf = 0;
+byte *Bytep = &Buffer[Recv_buf];
+byte *Endp = Bytep + 799;    // Set to last byte position to accept data into
 
-#define send_bit(time)    \
-  PORTD = bit;            \
-  bit = ~(n & 1);         \
-  n >>= 1;                \
-  PORTD = 0;              \
-  while (TCNT2 < time) 
+#define RECV_TEST()                     \
+  if (UCSR0A & (1 << RXC0)) {           \
+    if (Bytep <= Endp) {                \
+      *Bytep++ = UDR0;                  \
+    }                                   \
+    if (Bytep >= Endp) {                \
+      PORTC = 0x01; /* Stop PC */       \
+    }                                   \
+  }
+
+// est 7 cpu cycles, excluding RECV_TEST
+#define SEND_BIT(n)                     \
+  PORTD = bit;                          \
+  bit = ~(n & 1);                       \
+  n >>= 1;                              \
+  PORTD = 0;                            \
+  RECV_TEST()
+
+#define MAG_CHECK()                     \
+  if (PIND & 0x80) {
+    unsigned long rotation = micros() - Start_mag_time;
+    if (rotation > 20000ul) {
+      Rotation = rotation;
+      Slice = (rotation + 25ul) / 50ul;
+      Start_mag_time = now;
+    }
+  }
+
+#define WAIT_UNTIL(time)                \
+  while (TCNT2 < (time)) 
 
 void
-send_byte(byte n) {
+send_2_bytes(byte n1, byte n2) {
+  // This takes .1 mSec to execute, or the time for 1 column.
   byte bit = 0x01;
-  GTCCR = 2;         // reset timer2 prescalar
-  TCNT2 = 0;         // reset timer2 counter
-  send_bit(8+1);     // start bit
-  send_bit(2*8+1);   // bit 7
-  send_bit(3*8+1);   // bit 6
-  send_bit(4*8+1);   // bit 5
-  send_bit(5*8+1);   // bit 4
-  send_bit(6*8+1);   // bit 3
-  send_bit(7*8+1);   // bit 2
-  send_bit(8*8+1);   // bit 1
-  send_bit(10*8);    // bit 0 + stop bit
+  GTCCR = 2;            // reset timer2 prescalar
+  TCNT2 = 0;            // reset timer2 counter
+
+  SEND_BIT(n1);         // start bit
+  WAIT_UNTIL(8+1);
+  SEND_BIT(n1);         // bit 0
+  WAIT_UNTIL(2*8+1);
+  SEND_BIT(n1);         // bit 1
+  WAIT_UNTIL(3*8+1);
+  SEND_BIT(n1);         // bit 2
+  WAIT_UNTIL(4*8+1);
+  SEND_BIT(n1);         // bit 3
+  WAIT_UNTIL(5*8+1);
+  SEND_BIT(n1);         // bit 4
+  WAIT_UNTIL(6*8+1);
+  SEND_BIT(n1);         // bit 5
+  WAIT_UNTIL(7*8+1);
+  SEND_BIT(n1);         // bit 6
+  WAIT_UNTIL(8*8+1);
+  SEND_BIT(n1);         // bit 7 + stop bit
+  MAG_CHECK();
+  WAIT_UNTIL(10*8);
+
+  SEND_BIT(n2);         // start bit
+  WAIT_UNTIL(11*8+1);
+  SEND_BIT(n2);         // bit 0
+  WAIT_UNTIL(12*8+1);
+  SEND_BIT(n2);         // bit 1
+  WAIT_UNTIL(13*8+1);
+  SEND_BIT(n2);         // bit 2
+  WAIT_UNTIL(14*8+1);
+  SEND_BIT(n2);         // bit 3
+  WAIT_UNTIL(15*8+1);
+  SEND_BIT(n2);         // bit 4
+  WAIT_UNTIL(16*8+1);
+  SEND_BIT(n2);         // bit 5
+  WAIT_UNTIL(17*8+1);
+  SEND_BIT(n2);         // bit 6
+  WAIT_UNTIL(18*8+1);
+  SEND_BIT(n2);         // bit 7 + stop bit
+  MAG_CHECK();
+  WAIT_UNTIL(200);      // includes extra wait time for .1 mSec/column
+}
+
+void
+send_slice(byte *p) {
+  for (byte i = 0; i < 15; i += 2) {
+    send_2_bytes(p[i], p[i+1]);
+  }
+  // delay .2 mSec (sync pause at end of slice)
+  unsigned long start_time = micros();
+  while (micros() - start_time < 200ul) {
+    // There may be up to 2 bytes left to recv.
+    if ((PORTC & 1) && Bytep <= Endp) PORTC = 0;
+    RECV_TEST();
+  }
+}
+
+void
+send_frame(byte *p) {
+  unsigned long start_time = micros();
+  for (int i = 0; i < 800; i += 16) {
+    send_slice(p + i);
+    if (PIND & 0x10) {
+      unsigned long end_time;
+      while ((end_time = micros()) - start_time < Slice) ;
+      start_time = end_time;
+    }
+  }
 }
 
 byte
@@ -96,31 +194,22 @@ byte c1;
 void
 send_256(void) {
   Serial.println("Sending all 256 chars");
-  for (int i = 0; i < 256; i++) {
-    send_byte(byte(i));
+  for (byte i = 0; i < 255; i += 2) {
+    send_2_bytes(i, i + 1);
   }
   Serial.println("sent");
 }
 
 void
 loop(void) {
-  if (Serial.available()) {
-    byte c = Serial.read();
-    if (c == '.') {
-
-      c1 = 0;
-    } else if (c == '+') {
-      Serial.println("Sending infinite 0x55, RESET to stop");
-      for (;;) send_byte(0x55);
-    } else if (c == 'h') {
-      help();
-      c1 = 0;
-    } else if (c1) {
-      c1 = (hex(c1) << 4) | hex(c);
-      Serial.print("Sending 0x");
-      Serial.println(c1, HEX);
-      send_byte(c1);
-      c1 = 0;
-    } else c1 = c;
+  if (Bytep >= Endp) {
+    byte *p = &Buffer[Recv_buf];
+    Recv_buf ^= 1;
+    Bytep = Buffer[Recv_buf];
+    Endp = Bytep + 799;
+    send_frame(p);
+  } else RECV_TEST()
+  else if (button) {
+    send_256();
   }
 }
