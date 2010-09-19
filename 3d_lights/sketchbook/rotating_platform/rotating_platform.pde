@@ -153,7 +153,6 @@ setup(void) {
   TIMSK2 = 0;     // disable interrupts
   TCCR2A = 0x00;  // normal mode
   TCCR2B = 0x03;  // prescaler = 32
-  TCCR2C = 0x00;
 
   // set up USART for 250K, 8-N-1, no interrupts
   UBRR0H = 0;
