@@ -19,7 +19,7 @@ setup(void) {
   pinMode(3, OUTPUT);     // INT0, PD2
   digitalWrite(3, LOW);   // default LOW
   
-  // Set up timer 2 to interrupt every 5 uSec (using TOV2 interrupt):
+  // Set up timer 2 with prescaler of 8 (.5 uSec/timer tick)
   TIMSK0 = 0;     // disable interrupts
   TCCR2A = 0;     // WGM = 0 (normal mode)
   TCCR2B = 0x02;  // prescaler: timer clk == cpu clk / 8

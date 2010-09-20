@@ -61,7 +61,7 @@ set_column(byte b1, byte b2, byte column) {
   PORTD = d;
   GTCCR = 2;     // reset prescalar for timer2
   TCNT2 = 0;     // set timer2 value to 0
-  TIFR2 = 2;     // reset OCF2A flag (match on OCR2A reg)
+  TIFR2 = 6;     // reset OCF2A and OCF2B match flags
   TIMSK2 = 0x06; // enable compare match OCR2A and OCR2B interrupt
 }
 
@@ -147,11 +147,11 @@ setup(void) {
   // set up Timer2 in normal mode with prescaler of 32 (2uSec per timer tick).
   // TCNT2 has timer count.
   // GTCCR = 2 to reset prescaler count
-  OCR2A = 50;     // .1mSec (100uSec)
-  OCR2B = 75;     // .15mSec (150uSec)
+  OCR2A = 49;     // .1mSec (100uSec)
+  OCR2B = 74;     // .15mSec (150uSec)
   ASSR = 0;
   TIMSK2 = 0;     // disable interrupts
-  TCCR2A = 0x00;  // normal mode
+  TCCR2A = 0x03;  // normal mode
   TCCR2B = 0x03;  // prescaler = 32
 
   // set up USART for 250K, 8-N-1, no interrupts
@@ -168,14 +168,15 @@ setup(void) {
   if (c & 0x02) led_test();
   if (c & 0x04) comm_test();
   Column = 7;
+  interrupts();
 }
 
 void
 loop(void) {
   Loop_again = 1;
   while (Loop_again) {
-    Loop_again = 0;     // set by OCR2B timer interrupt if .15mSec passes
     while (!(UCSR0A & (1 << RXC0))) ;
+    Loop_again = 0;     // set by OCR2B timer interrupt if .15mSec passes
     Byte1 = UDR0;
     while (!(UCSR0A & (1 << RXC0))) ;
     Byte2 = UDR0;

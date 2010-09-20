@@ -4,20 +4,25 @@
 #include <avr/io.h>
 
 void
+help(void) {
+  Serial.println("g - go at 190 nSec sample rate (total 288 mSec)");
+}
+
+void
 setup(void) {
   Serial.begin(57600);
   //pinMode(11, OUTPUT);  // OCR2A, PB3
-  pinMode(8, INPUT);     // INT0, PD2
-  digitalWrite(8, LOW);  // no pull-up resistor
-  pinMode(9, INPUT);     // INT0, PD2
-  digitalWrite(9, LOW);  // no pull-up resistor
-  pinMode(10, INPUT);     // INT0, PD2
+  pinMode(8, INPUT);      // PORTB, PIN 0
+  digitalWrite(8, LOW);   // no pull-up resistor
+  pinMode(9, INPUT);      // PORTB, PIN 1
+  digitalWrite(9, LOW);   // no pull-up resistor
+  pinMode(10, INPUT);     // PORTB, PIN 2
   digitalWrite(10, LOW);  // no pull-up resistor
-  pinMode(11, INPUT);     // INT0, PD2
+  pinMode(11, INPUT);     // PORTB, PIN 3
   digitalWrite(11, LOW);  // no pull-up resistor
-  pinMode(12, INPUT);     // INT0, PD2
+  pinMode(12, INPUT);     // PORTB, PIN 4
   digitalWrite(12, LOW);  // no pull-up resistor
-  pinMode(13, INPUT);     // INT0, PD2
+  pinMode(13, INPUT);     // PORTB, PIN 5
   digitalWrite(13, LOW);  // no pull-up resistor
   
   // Set up timer 2 to interrupt every 5 uSec (using TOV2 interrupt):
@@ -25,15 +30,9 @@ setup(void) {
   //TCCR2A = 0;     // WGM = 0 (normal mode)
   //TCCR2B = 0x02;  // prescaler: timer clk == cpu clk / 8
   //ASSR = 0;
-  Serial.println("ready");
+  Serial.println("digital_oscope");
+  help();
 }
-
-#define send_bit(time)           \
-  PORTD = bit;                   \
-  bit = n & 0x80 ? 0 : 0x08;     \
-  n <<= 1;                       \
-  PORTD = 0x08;                  \
-  while (TCNT2 < time) 
 
 // This will capture DATA_SIZE * 3 / 16 uSec.
 // 1.5K is 288uSec.
@@ -115,7 +114,7 @@ check_bit(int i, byte bit, byte bytes_output) {
 }
 
 void
-send_data(void) {
+send_data(float sample_rate) {
   for (byte j = 0; j < 6; j++) {
     if (Data[0] & (1 << j)) {
       Serial.print("+ ");
@@ -138,9 +137,9 @@ send_data(void) {
         Serial.print(". ");
         bytes_output += 2;
       }
-      Serial.print(3*(i - last) / 16.0);
+      Serial.print((i - last) * sample_rate);
       Serial.print(" ");
-      Serial.println(3*i / 16.0);
+      Serial.println(i * sample_rate);
       last = i;
     }
   }
@@ -150,10 +149,15 @@ void
 loop(void) {
   if (Serial.available()) {
     byte c = Serial.read();
-    if (c == 'g') {
+    switch (c) {
+    case 'h':
+      help();
+      break;
+    case 'g':
       Serial.println("waiting");
       get_data();
-      send_data();
+      send_data(3.0/16.0);
+      break;
     }
   }
 }
