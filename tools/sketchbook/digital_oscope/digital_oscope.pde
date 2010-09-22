@@ -4,47 +4,54 @@
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 
-char Str_buf[80];
+char Str_buf[60];
 
 char *
-fiddle(const char *p_str) {
-  char *bufp;
-  for (bufp = Str_buf; bufp - Str_buf < 79; bufp++) {
-    char c = pgm_read_byte(p_str++);
-    if (!c) break;
-    *bufp = c;
-  }
-  *bufp = 0;
-  return Str_buf;
+fstr(PGM_P p_str) {
+  return strncpy_P(Str_buf, p_str, 59);
 }
 
-#define FSTR(s)         fiddle(PSTR(s))
+const char PROGMEM Digital_oscope[] = "digital_oscope:";
+const char PROGMEM F_command[] =
+  "  f    - fast 190 nSec sample rate (total 288 uSec)";
+const char PROGMEM S_command[] =
+  "  snn. - slow nn uSec sample rate (total 1.5*nn mSec)";
+const char PROGMEM C_command[] =
+  "  c    - sample changes (for slow data rates)";
+
+const char PROGMEM Pre_trigger[] = "pre-trigger";
+const char PROGMEM Waiting_750_changes[] = "waiting 750 changes";
+const char PROGMEM Waiting_fast[] =
+  "waiting for 288 mSec sample at 190 nSec sample rate";
+
+const char PROGMEM Waiting1[] = "waiting for ";
+const char PROGMEM Waiting2[] = " mSec sample at ";
+const char PROGMEM Waiting3[] = " uSec sample rate";
 
 void
 help(void) {
-  Serial.println(FSTR("digital_oscope:"));
-  Serial.println(FSTR("  f    - fast 190 nSec sample rate (total 288 uSec)"));
-  Serial.println(FSTR("  snn. - slow nn uSec sample rate (total 1.5*nn mSec)"));
-  Serial.println(FSTR("  c    - sample changes (for slow data rates)"));
+  Serial.println(fstr(Digital_oscope));
+  Serial.println(fstr(F_command));
+  Serial.println(fstr(S_command));
+  Serial.println(fstr(C_command));
 }
 
 void
 setup(void) {
   Serial.begin(57600);
 
-  //pinMode(11, OUTPUT);  // OCR2A, PB3
-  //pinMode(8, INPUT);      // PORTB, PIN 0
-  //digitalWrite(8, LOW);   // no pull-up resistor
-  //pinMode(9, INPUT);      // PORTB, PIN 1
-  //digitalWrite(9, LOW);   // no pull-up resistor
-  //pinMode(10, INPUT);     // PORTB, PIN 2
-  //digitalWrite(10, LOW);  // no pull-up resistor
-  //pinMode(11, INPUT);     // PORTB, PIN 3
-  //digitalWrite(11, LOW);  // no pull-up resistor
-  //pinMode(12, INPUT);     // PORTB, PIN 4
-  //digitalWrite(12, LOW);  // no pull-up resistor
-  //pinMode(13, INPUT);     // PORTB, PIN 5
-  //digitalWrite(13, LOW);  // no pull-up resistor
+  pinMode(8, INPUT);      // PORTB, PIN 0
+  digitalWrite(8, LOW);   // no pull-up resistor
+  pinMode(9, INPUT);      // PORTB, PIN 1
+  digitalWrite(9, LOW);   // no pull-up resistor
+  pinMode(10, INPUT);     // PORTB, PIN 2
+  digitalWrite(10, LOW);  // no pull-up resistor
+  pinMode(11, INPUT);     // PORTB, PIN 3
+  digitalWrite(11, LOW);  // no pull-up resistor
+  pinMode(12, INPUT);     // PORTB, PIN 4
+  digitalWrite(12, LOW);  // no pull-up resistor
+  pinMode(13, INPUT);     // PORTB, PIN 5
+  digitalWrite(13, LOW);  // no pull-up resistor
   
   // Set up timer 2 prescaler to 8, so timer ticks at .5 uSec.
   //TIMSK0 = 0;     // disable interrupts
@@ -137,7 +144,7 @@ get_changes(void) {
     unsigned long now;
     for (;;) {
       now = micros();
-      if ((b1 == PINB) != b2) break;
+      if ((b1 = PINB) != b2) break;
       if (now - last_time >= 2550ul) {
         Data[i++] = 255;
         if (i >= DATA_SIZE - 1) {
@@ -166,9 +173,9 @@ send_bits(byte last, byte now,
 {
   for (byte i = 0; i < 6; i++) {
     byte bit = 1 << i;
-    if ((last & bit) == (now & bit)) Serial.print('. ');
-    else if (now & bit) Serial.print('+ ');
-    else Serial.print('- ');
+    if ((last & bit) == (now & bit)) Serial.print(". ");
+    else if (now & bit) Serial.print("+ ");
+    else Serial.print("- ");
   }
   Serial.print(delta_time);
   cumulative_time += delta_time;
@@ -186,35 +193,20 @@ send_changes(void) {
       Serial.print("- ");
     }
   }
-  Serial.println(FSTR("pre-trigger"));
+  Serial.println(fstr(Pre_trigger));
   byte last_byte = Data[0];
   unsigned long cumulative_time = send_bits(last_byte, Data[1], 0ul, 0ul);
   for (int i = 2; i < DATA_SIZE - 1; i += 2) {
     unsigned long delta_time = 0;
     while (Data[i] == 255) {
       delta_time += 2550;
-      if (i >= DATA_SIZE - 1) return;
+      if (++i >= DATA_SIZE - 1) return;
     }
     delta_time += Data[i] * 10;
     cumulative_time = send_bits(last_byte, Data[i + 1], delta_time,
                                 cumulative_time);
     last_byte = Data[i + 1];
   }
-}
-
-void
-print4(int i) {
-  byte d;
-  d = i / 1000;
-  i %= 1000;
-  Serial.print('0' + d);
-  d = i / 100;
-  i %= 100;
-  Serial.print('0' + d);
-  d = i / 10;
-  i %= 10;
-  Serial.print('0' + d);
-  Serial.print('0' + i);
 }
 
 byte
@@ -243,7 +235,7 @@ send_data(float sample_rate) {
       Serial.print("- ");
     }
   }
-  Serial.println(FSTR("pre-trigger"));
+  Serial.println(fstr(Pre_trigger));
   int last = 0;
   for (int i = 1; i < DATA_SIZE; i++) {
     byte bytes_output = 0;
@@ -259,7 +251,7 @@ send_data(float sample_rate) {
         bytes_output += 2;
       }
       Serial.print((i - last) * sample_rate);
-      Serial.print(" ");
+      Serial.print(' ');
       Serial.println(i * sample_rate);
       last = i;
     }
@@ -286,13 +278,12 @@ loop(void) {
     byte c = Serial.read();
     switch (c) {
     case 'c':
-      Serial.println(FSTR("waiting 750 changes"));
+      Serial.println(fstr(Waiting_750_changes));
       get_changes();
       send_changes();
       break;
     case 'f':
-      Serial.println(
-        FSTR("waiting for 288 mSec sample at 190 nSec sample rate"));
+      Serial.println(fstr(Waiting_fast));
       get_data();
       send_data(3.0/16.0);
       break;
@@ -301,11 +292,11 @@ loop(void) {
       if (i < 0) help();
       else {
         int msec = i + i/2;
-        Serial.print(FSTR("waiting for "));
+        Serial.print(fstr(Waiting1));
         Serial.print(msec);
-        Serial.print(FSTR(" mSec sample at "));
+        Serial.print(fstr(Waiting2));
         Serial.print(i);
-        Serial.println(FSTR(" uSec sample rate"));
+        Serial.println(fstr(Waiting3));
         get_slow_data(i);
         send_data(float(i));
       }

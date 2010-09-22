@@ -4,6 +4,25 @@
 #include <avr/io.h>
 
 /********************************************************
+Pin assignments:
+
+  16 LED columns (least to most significant, using Arduino pin #s):
+    analog pins 0-1
+    pins 2-12
+    analog pins 3-5
+  
+  3 LED row address bits (least to most significant):
+    pin 1 (labeled TX on Arduino)
+    analog pin 2
+    pin 13
+  
+  IrDA RX line:
+    pin 0 (labeled RX on Arduino)
+
+*********************************************************/
+
+
+/********************************************************
 
 USART registers:
 
@@ -50,12 +69,10 @@ turn_column_off(void) {
 void
 set_column(byte b1, byte b2, byte column) {
   turn_column_off();
-  byte c = (column << 1) & 0x0E; // column address
-  PORTC = c;          // get the demux and transistors started
-  byte d = b1 & 0xFE;
-  byte b = b2 & 0x3F;
-  c |= b1 & 1;
-  c |= (b2 >> 2) & 0x30;
+  column <<= 1;
+  byte d = (b1 & 0xFC) | (column & 0x02);
+  byte b = ((column << 2) & 0x20) | (b2 & 0x1F);
+  byte c = ((b2 >> 2) & 0x38) | (column & 0x04) | (b1 & 0x03);
   PORTB = b;
   PORTC = c;
   PORTD = d;
@@ -83,9 +100,9 @@ ISR(TIMER2_COMPB_vect) {
 
 void
 pulse_row(byte b1, byte b2) {
-  for (byte column = 7; column; column -= 1) {
-    set_column(b1, b2, column);
-    while (TCNT2 < 55) ;
+  for (byte column = 8; column;) {
+    set_column(b1, b2, --column);
+    while (TCNT2 < 55) ;   // wait long enough for intr to turn them off
   }
 }
 
@@ -95,19 +112,19 @@ led_test(void) {
   for (;;) {
     // test columns:
     for (column = 0; column < 8; column++) {
-      set_column(0xff, 0xff, column);
       delay(250);
+      set_column(0xff, 0xff, column);
     }
 
     // test rows:
     b2 = 0;
     for (b1 = 1; b1; b1 <<= 1) {
-      pulse_row(b1, b2);
       delay(250);
+      pulse_row(b1, b2);
     }
     for (b2 = 1; b2; b2 <<= 1) {
-      pulse_row(b1, b2);
       delay(250);
+      pulse_row(b1, b2);
     }
   }
 }
@@ -139,10 +156,11 @@ setup(void) {
   // turn off pull-ups, set output ports LOW
   PORTB = PORTC = PORTD = 0;
 
-  DDRD = 0xFE;    // 7 output pins, 1 input (RX) (0 in, 1-7 out)
+  DDRD = 0xFC;    // 6 output pins, 2 input (RX) (0-1 in, 2-7 out)
   DDRB = 0x3F;    // 6 output pins (8-13 out)
-  DDRC = 0x39;    // 4 output pins, 2 input (0 out, 1-2 in, 3-5 out)
-  PORTC = 0x06;   // enable pullups on 1-2
+  DDRC = 0x3B;    // 5 output pins, 1 input (0-1 out, 2 in, 3-5 out)
+  PORTD = 0x02;   // enable pullup on pin 1
+  PORTC = 0x04;   // enable pullup on analog pin 2
 
   // set up Timer2 in normal mode with prescaler of 32 (2uSec per timer tick).
   // TCNT2 has timer count.
@@ -161,12 +179,15 @@ setup(void) {
   UCSR0C = 0x06;  // 8-N-1
   UCSR0B = 0x10;  // enable receiver, disable transmitter, disable all intr
 
-  byte c = PINC;  // read push buttons
+  byte led_button = PIND & 0x02;  // read LED push button (on LOW)
+  byte comm_button = PINC & 0x04; // read COMM push button (on LOW)
+  PORTD = 0;      // all outputs LOW
+  DDRD = 0xFE;    // 7 output pins, 1 input (1-7 out, 0 in)
   PORTC = 0;      // all outputs LOW
   DDRC = 0x3F;    // 6 output pins (0-5 out)
 
-  if (c & 0x02) led_test();
-  if (c & 0x04) comm_test();
+  if (!led_button) led_test();    // never returns
+  if (!comm_button) comm_test();  // never returns
   Column = 7;
   interrupts();
 }
