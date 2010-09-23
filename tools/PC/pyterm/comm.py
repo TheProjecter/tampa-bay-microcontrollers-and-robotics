@@ -209,3 +209,8 @@ def cycle(devnum = 0, **kws):
     s = ''.join(chr(i) for i in range(256))
     print "cycling", repr(s)
     repeat(devnum, s, **kws)
+
+def repeat_file(filename, devnum = 0):
+    with file(filename) as f:
+        data = f.read()
+    repeat(devnum, data, crtscts = True)

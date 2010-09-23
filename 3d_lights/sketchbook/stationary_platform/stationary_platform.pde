@@ -20,6 +20,8 @@ unsigned long Start_mag_time;   // time (in uSec) of last magnetic pulse
 unsigned long Rotation;         // uSec/rotation
 unsigned int  Slice;            // uSec/slice
 
+#line 23 "stationary_platform.pde"
+
 void
 help(void) {
   Serial.println(".  -- send all 256 chars as a block");
@@ -63,7 +65,7 @@ setup(void) {
   digitalWrite(CTS_PIN, LOW);               // enable PC to send data
 
   // Set up timer 2 to tick at .5 uSec/tick.
-  TIMSK0 = 0;     // disable interrupts
+  TIMSK2 = 0;     // disable interrupts
   TCCR2A = 0;     // WGM = 0 (normal mode)
   TCCR2B = 0x02;  // prescaler: timer clk == cpu clk / 8
   ASSR = 0;
@@ -73,7 +75,7 @@ setup(void) {
 
 byte Buffer[2][800];
 byte Recv_buf = 0;
-byte *Bytep = &Buffer[Recv_buf];
+byte *Bytep = Buffer[Recv_buf];
 byte *Endp = Bytep + 799;    // Set to last byte position to accept data into
 
 #define RECV_TEST()                     \
@@ -88,20 +90,21 @@ byte *Endp = Bytep + 799;    // Set to last byte position to accept data into
 
 // est 7 cpu cycles, excluding RECV_TEST
 #define SEND_BIT(n)                     \
-  PORTD = bit;                          \
-  bit = ~(n & 1);                       \
+  PORTB = bit;                          \
+  bit = ~(n | 0xFE);                    \
   n >>= 1;                              \
-  PORTD = 0;                            \
+  PORTB = 0;                            \
   RECV_TEST()
 
-#define MAG_CHECK()                     \
-  if (PIND & 0x80) {
-    unsigned long rotation = micros() - Start_mag_time;
-    if (rotation > 20000ul) {
-      Rotation = rotation;
-      Slice = (rotation + 25ul) / 50ul;
-      Start_mag_time = now;
-    }
+#define MAG_CHECK()                                             \
+  if (!(PIND & 0x80)) {                                         \
+    unsigned long now = micros();                               \
+    unsigned long rotation = now - Start_mag_time;              \
+    if (rotation > 20000ul) {                                   \
+      Rotation = rotation;                                      \
+      Slice = (rotation + 25ul) / 50ul;                         \
+      Start_mag_time = now;                                     \
+    }                                                           \
   }
 
 #define WAIT_UNTIL(time)                \
@@ -134,6 +137,7 @@ send_2_bytes(byte n1, byte n2) {
   MAG_CHECK();
   WAIT_UNTIL(10*8);
 
+  bit = 0x01;
   SEND_BIT(n2);         // start bit
   WAIT_UNTIL(11*8+1);
   SEND_BIT(n2);         // bit 0
@@ -194,8 +198,8 @@ byte c1;
 void
 send_256(void) {
   Serial.println("Sending all 256 chars");
-  for (byte i = 0; i < 255; i += 2) {
-    send_2_bytes(i, i + 1);
+  for (int i = 0; i < 255; i += 2) {
+    send_2_bytes(byte(i), byte(i + 1));
   }
   Serial.println("sent");
 }
@@ -203,13 +207,14 @@ send_256(void) {
 void
 loop(void) {
   if (Bytep >= Endp) {
-    byte *p = &Buffer[Recv_buf];
+    byte *p = Buffer[Recv_buf];
     Recv_buf ^= 1;
     Bytep = Buffer[Recv_buf];
     Endp = Bytep + 799;
     send_frame(p);
   } else RECV_TEST()
-  else if (button) {
+  else if (!digitalRead(PUSH_BUTTON_PIN)) {
     send_256();
+    delay(500);
   }
 }

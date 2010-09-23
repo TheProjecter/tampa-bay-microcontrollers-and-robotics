@@ -1,7 +1,8 @@
-// digital_oscope.pde
+// 3d_light_oscope.pde
 
 // This header is in /usr/lib/avr/include on Linux and maps to <avr/iom328p.h>
 #include <avr/io.h>
+
 #include <avr/pgmspace.h>
 
 char Str_buf[60];
@@ -36,6 +37,10 @@ help(void) {
   Serial.println(fstr(C_command));
 }
 
+#define SEND_SIZE       256
+
+byte Send[SEND_SIZE];
+
 void
 setup(void) {
   Serial.begin(57600);
@@ -58,12 +63,17 @@ setup(void) {
   //TCCR2A = 0;     // WGM = 0 (normal mode)
   //TCCR2B = 0x02;  // prescaler: timer clk == cpu clk / 8
   //ASSR = 0;
+  for (int i = 0; i < 256; i++) Send[i] = byte(i);
+  Send[10] = 4;
+  Send[56] = 5;
+  Send[66] = 6;
   help();
 }
 
 // This will capture DATA_SIZE * 3 / 16 uSec.
 // 1.5K is 288uSec.
-#define DATA_SIZE   (2+1024+512)
+//#define DATA_SIZE   (2+1024+256)
+#define DATA_SIZE   (2+1024)
 
 byte Data[DATA_SIZE];
 
@@ -135,16 +145,26 @@ get_changes(void) {
   The first two bytes are the pre-trigger and trigger values.  No times are
   stored for these.
   ********/
-  byte b1 = 0, b2;
-  while (!((b2 = PINB) & 1)) b1 = b2;
-  unsigned long last_time = micros();
+  byte b1 = PINB;
+  //while (!(UCSR0A & (1 << UDRE0))) ;
+  UDR0 = Send[0];
+  unsigned long sent_time = micros();
+  byte send_count = 1;
+  byte b2 = PINB;
+  //while (!((b2 = PINB) & 1)) b1 = b2;
+  unsigned long last_time = sent_time;
   Data[0] = b1;
   Data[1] = b2;
   for (int i = 2; i < DATA_SIZE - 1; i += 2) {
     unsigned long now;
     for (;;) {
       now = micros();
-      if ((b1 = PINB) != b2) break;
+      b1 = PINB;
+      if (send_count && now - sent_time >= 50) {
+        UDR0 = Send[send_count++];
+        sent_time = now;
+      }
+      if (b1 != b2) break;
       if (now - last_time >= 2550ul) {
         Data[i++] = 255;
         if (i >= DATA_SIZE - 1) {
@@ -270,7 +290,6 @@ get_num(void) {
   }
 }
 
-
 void
 loop(void) {
   if (Serial.available()) {
@@ -279,7 +298,12 @@ loop(void) {
     switch (c) {
     case 'c':
       Serial.println(fstr(Waiting_750_changes));
+      delay(1);
+      Serial.begin(250000);
+      delay(1);
       get_changes();
+      Serial.begin(57600);
+      delay(1);
       send_changes();
       break;
     case 'f':

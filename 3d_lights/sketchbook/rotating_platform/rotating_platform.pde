@@ -111,9 +111,9 @@ led_test(void) {
   byte b1, b2, column;
   for (;;) {
     // test columns:
-    for (column = 0; column < 8; column++) {
+    for (column = 8; column;) {
       delay(250);
-      set_column(0xff, 0xff, column);
+      set_column(0xff, 0xff, --column);
     }
 
     // test rows:
@@ -146,7 +146,7 @@ comm_test(void) {
       if (UDR0 != i) errors += 1;
     }
     if (!abort) {
-      set_column(0xF0 | (errors >> 8), errors, 0);
+      set_column(byte(errors), 0xF0 | byte(errors >> 8), 7);
     }
   }
 }
@@ -169,7 +169,7 @@ setup(void) {
   OCR2B = 74;     // .15mSec (150uSec)
   ASSR = 0;
   TIMSK2 = 0;     // disable interrupts
-  TCCR2A = 0x03;  // normal mode
+  TCCR2A = 0x03;  // fast PWM mode
   TCCR2B = 0x03;  // prescaler = 32
 
   // set up USART for 250K, 8-N-1, no interrupts
@@ -194,13 +194,18 @@ setup(void) {
 
 void
 loop(void) {
-  Loop_again = 1;
-  while (Loop_again) {
-    while (!(UCSR0A & (1 << RXC0))) ;
+  while (!(UCSR0A & (1 << RXC0))) ;
+  Byte1 = UDR0;
+  for (;;) {   // This should only ever loop once or twice.  After the second
+               // loop, Loop_again would not be set again because the
+               // interrupts are disabled.
     Loop_again = 0;     // set by OCR2B timer interrupt if .15mSec passes
-    Byte1 = UDR0;
     while (!(UCSR0A & (1 << RXC0))) ;
-    Byte2 = UDR0;
+    if (Loop_again) Byte1 = UDR0;
+    else {
+      Byte2 = UDR0;
+      break;
+    }
   }
   set_column(Byte1, Byte2, Column);
   Column = (Column - 1) & 0x07;
