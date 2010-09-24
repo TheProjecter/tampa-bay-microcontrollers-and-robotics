@@ -16,17 +16,13 @@
 // This header is in /usr/lib/avr/include on Linux and maps to <avr/iom328p.h>
 #include <avr/io.h>
 
-unsigned long Start_mag_time;   // time (in uSec) of last magnetic pulse
-unsigned long Rotation;         // uSec/rotation
-unsigned int  Slice;            // uSec/slice
+unsigned int Rotation;         // ticks/rotation (4 uSec/tick)
+unsigned int Slice;            // ticks/slice (4 uSec/tick)
 
 #line 23 "stationary_platform.pde"
 
 void
 help(void) {
-  Serial.println(".  -- send all 256 chars as a block");
-  Serial.println("+  -- send infinite 0x55 chars, RESET to stop");
-  Serial.println("xx -- send hex xx char");
   Serial.println("h  -- help");
 }
 
@@ -64,11 +60,29 @@ setup(void) {
   pinMode(CTS_PIN, OUTPUT);
   digitalWrite(CTS_PIN, LOW);               // enable PC to send data
 
+  TIMSK0 = 0;     // disable interrupts: micros, millis and delay don't work
+                  //                     from here on...
+
+  // Set up timer 1 to tick at 4 uSec/tick.  Max range 262 mSec.
+  //
+  // The plan is to reset the counter at the start of each revolution.  This
+  // will only work if the rps is > 4.
+  //
+  // Then divide that by 50 to get the time between slices.
+  //
+  // Then do 25 ticks (100 uSec) per column, 10 ticks/byte transmitted, 1
+  // tick/bit.
+  TIMSK1 = 0;     // disable interrupts
+  TCCR1A = 0;     // WGM = 0 (normal mode)
+  TCCR1B = 0x03;  // prescaler: timer clk == cpu clk / 64
+  // GTCCR = 1 will reset timer0-1 prescaler
+
   // Set up timer 2 to tick at .5 uSec/tick.
   TIMSK2 = 0;     // disable interrupts
   TCCR2A = 0;     // WGM = 0 (normal mode)
   TCCR2B = 0x02;  // prescaler: timer clk == cpu clk / 8
   ASSR = 0;
+  // GTCCR = 2 will reset timer2 prescaler
 
   help();
 }
@@ -77,6 +91,7 @@ byte Buffer[2][800];
 byte Recv_buf = 0;
 byte *Bytep = Buffer[Recv_buf];
 byte *Endp = Bytep + 799;    // Set to last byte position to accept data into
+byte Start_frame = 0;        // True to start displaying the next rotation
 
 #define RECV_TEST()                     \
   if (UCSR0A & (1 << RXC0)) {           \
@@ -96,21 +111,21 @@ byte *Endp = Bytep + 799;    // Set to last byte position to accept data into
   PORTB = 0;                            \
   RECV_TEST()
 
-#define MAG_CHECK()                                             \
-  if (!(PIND & 0x80)) {                                         \
-    unsigned long now = micros();                               \
-    unsigned long rotation = now - Start_mag_time;              \
-    if (rotation > 20000ul) {                                   \
-      Rotation = rotation;                                      \
-      Slice = (rotation + 25ul) / 50ul;                         \
-      Start_mag_time = now;                                     \
-    }                                                           \
+#define MAG_CHECK(last_statement)                  \
+  if (!(PIND & 0x90)) { /* mag & switch closed */  \
+    GTCCR = 1; /* reset timer0-1 prescaler */      \
+    unsigned int rotation = TCNT1;                 \
+    TCNT1 = 0;                                     \
+    Slice = (rotation + 25u) / 50u;                \
+    Rotation = rotation;                           \
+    Start_frame = 1;                               \
+    last_statement;                                \
   }
 
 #define WAIT_UNTIL(time)                \
   while (TCNT2 < (time)) 
 
-void
+byte
 send_2_bytes(byte n1, byte n2) {
   // This takes .1 mSec to execute, or the time for 1 column.
   byte bit = 0x01;
@@ -134,7 +149,7 @@ send_2_bytes(byte n1, byte n2) {
   SEND_BIT(n1);         // bit 6
   WAIT_UNTIL(8*8+1);
   SEND_BIT(n1);         // bit 7 + stop bit
-  MAG_CHECK();
+  MAG_CHECK(return 1);
   WAIT_UNTIL(10*8);
 
   bit = 0x01;
@@ -155,45 +170,42 @@ send_2_bytes(byte n1, byte n2) {
   SEND_BIT(n2);         // bit 6
   WAIT_UNTIL(18*8+1);
   SEND_BIT(n2);         // bit 7 + stop bit
-  MAG_CHECK();
+  MAG_CHECK(return 1);
   WAIT_UNTIL(200);      // includes extra wait time for .1 mSec/column
+  return 0;
 }
 
-void
+byte
 send_slice(byte *p) {
-  for (byte i = 0; i < 15; i += 2) {
-    send_2_bytes(p[i], p[i+1]);
+  for (byte i = 0; i < 16; i += 2) {
+    if (send_2_bytes(p[i], p[i+1])) return 1;
   }
   // delay .2 mSec (sync pause at end of slice)
-  unsigned long start_time = micros();
-  while (micros() - start_time < 200ul) {
+  unsigned int end_time = TCNT1 + 50;
+  while (TCNT1 < end_time) {
     // There may be up to 2 bytes left to recv.
     if ((PORTC & 1) && Bytep <= Endp) PORTC = 0;
     RECV_TEST();
+    MAG_CHECK(return 1);
   }
+  return 0;
 }
 
 void
 send_frame(byte *p) {
-  unsigned long start_time = micros();
+  unsigned int end_time = Slice;
   for (int i = 0; i < 800; i += 16) {
-    send_slice(p + i);
-    if (PIND & 0x10) {
-      unsigned long end_time;
-      while ((end_time = micros()) - start_time < Slice) ;
-      start_time = end_time;
+    if (send_slice(p + i)) break;
+    while (TCNT1 < end_time) {
+      if ((PORTC & 1) && Bytep <= Endp) {
+        PORTC = 0;    // enable hardware flow control
+      }
+      RECV_TEST();
+      MAG_CHECK();
     }
+    end_time += Slice;
   }
 }
-
-byte
-hex(byte c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-  return c - 'A' + 10;
-}
-
-byte c1;
 
 void
 send_256(void) {
@@ -207,14 +219,31 @@ send_256(void) {
 void
 loop(void) {
   if (Bytep >= Endp) {
-    byte *p = Buffer[Recv_buf];
-    Recv_buf ^= 1;
-    Bytep = Buffer[Recv_buf];
-    Endp = Bytep + 799;
-    send_frame(p);
-  } else RECV_TEST()
-  else if (!digitalRead(PUSH_BUTTON_PIN)) {
-    send_256();
-    delay(500);
+    if (PIND & 0x10) {  // switch open == async mode
+      Start_frame = 1;
+      GTCCR = 1; // reset timer0-1 prescaler
+      TCNT1 = 0;
+      Slice = 250;
+    }
+    if (Start_frame) {
+      byte *p = Buffer[Recv_buf];
+      Recv_buf ^= 1;
+      Bytep = Buffer[Recv_buf];
+      Endp = Bytep + 799;
+      PORTC = 0;     // enable hardware flow control
+      Start_frame = 0;
+      send_frame(p);
+    } else MAG_CHECK()
+  } else {
+    PORTC = 0;     // enable hardware flow control
+    RECV_TEST()
+    else MAG_CHECK()
+    else if (!digitalRead(PUSH_BUTTON_PIN)) {
+      send_256();
+      TCNT1 = 0;
+      while (TCNT1 < 62500u) ;    // delay 250 mSec
+      TCNT1 = 0;
+      while (TCNT1 < 62500u) ;    // delay 250 mSec
+    }
   }
 }
