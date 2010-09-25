@@ -1,9 +1,9 @@
 // stationary_platform.pde
 
-// These are grouped on the same port (PORTD) so they can be sampled together:
-#define SLIDE_SWITCH_PIN        4
-#define PUSH_BUTTON_PIN         5
-#define MAGNETIC_PICKUP_PIN     7
+// These are grouped on the same port (PIND) so they can be sampled together:
+#define SLIDE_SWITCH_PIN        4       /* 0x10 */
+#define PUSH_BUTTON_PIN         5       /* 0x20 */
+#define MAGNETIC_PICKUP_PIN     7       /* 0x80 */
 
 // The IRDA_TX_PIN is bit 0 of PORTB:
 #define IRDA_TX_PIN             8
@@ -16,10 +16,10 @@
 // This header is in /usr/lib/avr/include on Linux and maps to <avr/iom328p.h>
 #include <avr/io.h>
 
-unsigned int Rotation;         // ticks/rotation (4 uSec/tick)
-unsigned int Slice;            // ticks/slice (4 uSec/tick)
+// Min bytes received in sending buf to start the frame display.
+#define MIN_BYTES               100
 
-#line 23 "stationary_platform.pde"
+#line 22 "stationary_platform.pde"
 
 void
 help(void) {
@@ -30,10 +30,12 @@ void
 setup(void) {
   // set up USART for 500K, 8-N-1, no interrupts
   UBRR0H = 0;
-  UBRR0L = 1;     // 500K baud
-  UCSR0A = 0x00;  // turn off double speed and multi-processor mode
-  UCSR0C = 0x06;  // 8-N-1
-  UCSR0B = 0x18;  // enable receiver, enable transmitter, disable all intr
+  UBRR0L = 1;          // 500K baud
+  UCSR0A = 0x00;       // turn off double speed and multi-processor mode
+  UCSR0C = 0x06;       // 8-N-1
+  UCSR0B = 0x18;       // enable receiver, enable transmitter, disable all intr
+  pinMode(0, INPUT);   // USART RX
+  pinMode(1, OUTPUT);  // USART TX
 
   // Set up IrDA:
   pinMode(IRDA_TX_PIN, OUTPUT);     // IrDA TX
@@ -87,11 +89,14 @@ setup(void) {
   help();
 }
 
+unsigned int Rotation;         // ticks/rotation (4 uSec/tick)
+unsigned int Slice;            // ticks/slice (4 uSec/tick)
+
 byte Buffer[2][800];
-byte Recv_buf = 0;
+byte Send_buf = 0;           // toggles between 0 and 1
+byte Recv_buf = 0;           // toggles between 0 and 1
 byte *Bytep = Buffer[Recv_buf];
 byte *Endp = Bytep + 799;    // Set to last byte position to accept data into
-byte Start_frame = 0;        // True to start displaying the next rotation
 
 #define RECV_TEST()                     \
   if (UCSR0A & (1 << RXC0)) {           \
@@ -118,7 +123,6 @@ byte Start_frame = 0;        // True to start displaying the next rotation
     TCNT1 = 0;                                     \
     Slice = (rotation + 25u) / 50u;                \
     Rotation = rotation;                           \
-    Start_frame = 1;                               \
     last_statement;                                \
   }
 
@@ -177,34 +181,48 @@ send_2_bytes(byte n1, byte n2) {
 
 byte
 send_slice(byte *p) {
+  // This function takes 1 mSec to run.
   for (byte i = 0; i < 16; i += 2) {
     if (send_2_bytes(p[i], p[i+1])) return 1;
   }
   // delay .2 mSec (sync pause at end of slice)
   unsigned int end_time = TCNT1 + 50;
+  RECV_TEST();
+  if (Bytep <= Endp) PORTC = 0;  // enable hardware flow control
   while (TCNT1 < end_time) {
+    if (Send_buf == Recv_buf && Bytep > Endp) {
+      PORTC = 0;                 // enable hardware flow control
+      Recv_buf ^= 1;
+      Bytep = Buffer[Recv_buf];
+      Endp = Bytep + 799;
+    }
     // There may be up to 2 bytes left to recv.
-    if ((PORTC & 1) && Bytep <= Endp) PORTC = 0;
     RECV_TEST();
     MAG_CHECK(return 1);
   }
   return 0;
 }
 
-void
+byte
 send_frame(byte *p) {
   unsigned int end_time = Slice;
   for (int i = 0; i < 800; i += 16) {
-    if (send_slice(p + i)) break;
+    if (send_slice(p + i)) return 1;
+    RECV_TEST();
+    if (Bytep <= Endp) PORTC = 0;    // enable hardware flow control
     while (TCNT1 < end_time) {
-      if ((PORTC & 1) && Bytep <= Endp) {
-        PORTC = 0;    // enable hardware flow control
+      if (Send_buf == Recv_buf && Bytep > Endp) {
+        PORTC = 0;                 // enable hardware flow control
+        Recv_buf ^= 1;
+        Bytep = Buffer[Recv_buf];
+        Endp = Bytep + 799;
       }
       RECV_TEST();
-      MAG_CHECK();
+      MAG_CHECK(return 1);
     }
     end_time += Slice;
   }
+  return 0;
 }
 
 void
@@ -218,32 +236,35 @@ send_256(void) {
 
 void
 loop(void) {
-  if (Bytep >= Endp) {
-    if (PIND & 0x10) {  // switch open == async mode
-      Start_frame = 1;
-      GTCCR = 1; // reset timer0-1 prescaler
-      TCNT1 = 0;
-      Slice = 250;
-    }
-    if (Start_frame) {
-      byte *p = Buffer[Recv_buf];
-      Recv_buf ^= 1;
-      Bytep = Buffer[Recv_buf];
-      Endp = Bytep + 799;
-      PORTC = 0;     // enable hardware flow control
-      Start_frame = 0;
-      send_frame(p);
-    } else MAG_CHECK()
-  } else {
-    PORTC = 0;     // enable hardware flow control
-    RECV_TEST()
-    else MAG_CHECK()
-    else if (!digitalRead(PUSH_BUTTON_PIN)) {
-      send_256();
-      TCNT1 = 0;
-      while (TCNT1 < 62500u) ;    // delay 250 mSec
-      TCNT1 = 0;
-      while (TCNT1 < 62500u) ;    // delay 250 mSec
-    }
+  byte start_frame = 0;
+  if (PIND & 0x10) {    // switch open == async mode
+    start_frame = 1;
+    GTCCR = 1; // reset timer0-1 prescaler
+    TCNT1 = 0;
+    Slice = 250;
+  } else MAG_CHECK(start_frame = 1)
+
+  while (start_frame &&
+         (Send_buf != Recv_buf || Bytep > Buffer[Recv_buf] + MIN_BYTES)
+  ) {
+    start_frame = send_frame(Buffer[Send_buf]);
+    Send_buf ^= 1;
+  }
+
+  RECV_TEST();
+  if (Bytep <= Endp) PORTC = 0;  // enable hardware flow control
+  if (Send_buf == Recv_buf && Bytep > Endp) {
+    PORTC = 0;                 // enable hardware flow control
+    Recv_buf ^= 1;
+    Bytep = Buffer[Recv_buf];
+    Endp = Bytep + 799;
+  }
+
+  if (!(PIND & 0x20)) { // push button down
+    send_256();
+    TCNT1 = 0;
+    while (TCNT1 < 62500u) ;    // delay 250 mSec
+    TCNT1 = 0;
+    while (TCNT1 < 62500u) ;    // delay 250 mSec
   }
 }
