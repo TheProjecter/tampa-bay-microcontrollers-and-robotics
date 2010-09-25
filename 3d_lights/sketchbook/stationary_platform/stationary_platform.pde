@@ -19,7 +19,10 @@
 // Min bytes received in sending buf to start the frame display.
 #define MIN_BYTES               100
 
-#line 22 "stationary_platform.pde"
+#define SYNC_CHAR   0xD8
+#define ESC_CHAR    0x27
+
+#line 25 "stationary_platform.pde"
 
 void
 help(void) {
@@ -97,14 +100,28 @@ byte Send_buf = 0;           // toggles between 0 and 1
 byte Recv_buf = 0;           // toggles between 0 and 1
 byte *Bytep = Buffer[Recv_buf];
 byte *Endp = Bytep + 799;    // Set to last byte position to accept data into
+byte Ignore_next_escape = 0;
 
 #define RECV_TEST()                     \
   if (UCSR0A & (1 << RXC0)) {           \
     if (Bytep <= Endp) {                \
-      *Bytep++ = UDR0;                  \
+      byte c = UDR0;                    \
+      if (Ignore_next_escape) {         \
+        Ignore_next_escape = 0;         \
+        *Bytep++ = c;                   \
+      } else {                          \
+        if (c == ESC_CHAR) {            \
+          Ignore_next_escape = 1;       \
+        } else if (c == SYNC_CHAR) {    \
+          PORTC = 1; /* Stop PC */      \
+          Bytep = Endp + 1;             \
+        } else {                        \
+          *Bytep++ = c;                 \
+        }                               \
+      }                                 \
     }                                   \
     if (Bytep >= Endp) {                \
-      PORTC = 0x01; /* Stop PC */       \
+      PORTC = 1;    /* Stop PC */       \
     }                                   \
   }
 
@@ -209,7 +226,7 @@ send_frame(byte *p) {
   for (int i = 0; i < 800; i += 16) {
     if (send_slice(p + i)) return 1;
     RECV_TEST();
-    if (Bytep <= Endp) PORTC = 0;    // enable hardware flow control
+    if (Bytep <= Endp) PORTC = 0;  // enable hardware flow control
     while (TCNT1 < end_time) {
       if (Send_buf == Recv_buf && Bytep > Endp) {
         PORTC = 0;                 // enable hardware flow control
@@ -254,7 +271,7 @@ loop(void) {
   RECV_TEST();
   if (Bytep <= Endp) PORTC = 0;  // enable hardware flow control
   if (Send_buf == Recv_buf && Bytep > Endp) {
-    PORTC = 0;                 // enable hardware flow control
+    PORTC = 0;                   // enable hardware flow control
     Recv_buf ^= 1;
     Bytep = Buffer[Recv_buf];
     Endp = Bytep + 799;
