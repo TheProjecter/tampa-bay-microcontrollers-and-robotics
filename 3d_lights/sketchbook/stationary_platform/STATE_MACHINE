@@ -1,0 +1,134 @@
+Start state: WAIT_SYNC_START
+
+WAIT_SYNC_START:
+    conditions going into this state:
+        no SYNC yet
+        no data yet
+        no mag yet
+        Recv_buf may or may not == Send_buf
+        PORTC == 0
+        Read_ok == 1
+    conditions always true in this state:
+        no SYNC yet
+        no data yet
+        no mag yet
+        PORTC == 0
+        Read_ok == 1
+    no send, recv & discard until unescaped SYNC
+    state = WAIT_MIN_START
+
+WAIT_MIN_START:
+    conditions going into this state:
+        no data yet
+        no mag yet
+        Recv_buf may or may not == Send_buf
+        PORTC == 0
+        Read_ok == 1
+    conditions always true in this state:
+        < MIN
+        no mag yet
+        PORTC == 0
+        Read_ok == 1
+    no send, recv bytes, unescaping them
+    if SYNC:
+        if (< MIN)
+            Bytep = Buffer[Recv_buf];   // start over
+        else if Recv_buf == Send_buf:
+            switch Recv_buf
+        else:   // filled up Recv_buf, wait for send...
+            PORTC = 1;
+            Read_ok = 0;
+            state = WAIT_SEND;
+    if mag && > MIN:
+        state = SEND
+
+SEND:
+    conditions going into this state:
+        > MIN
+        just got mag
+        Recv_buf may or may not == Send_buf
+        PORTC == 0
+        Read_ok == 1
+    conditions always true in this state:
+        PORTC == 0
+        Read_ok == 1
+    send, recv bytes, unescaping them, discard bytes past Endp
+    if SYNC:
+        if Recv_buf == Send_buf:
+            switch Recv_buf
+            PORTC = 0  // is this really necesary?
+        else if < MIN:
+            Bytep = Buffer[Recv_buf];   // start over
+        else:
+            PORTC = 1
+            Bytep = Endp + 1    // is this really necessary?
+            Read_ok = 0
+            state = WAIT_SEND
+    if mag:
+        switch Send_buf
+        if Recv_buf == Send_buf:
+            if > MIN:
+                pass  // stay in SEND state
+            else:
+                state = WAIT_MAG        // data not ready for this rev...
+        else:
+            switch Recv_buf
+            state = WAIT_SYNC_START
+
+WAIT_SEND:
+    conditions going into this state:
+        Recv_buf full
+        PORTC = 1
+        Read_ok = 0
+        Recv_buf != Send_buf
+    conditions always true in this state:
+        Recv_buf full
+        PORTC = 1
+        Read_ok = 0
+        Recv_buf != Send_buf
+    send, no recv
+    if mag:
+        switch Send_buf
+        PORTC = 0
+        Read_ok = 1
+        switch Recv_buf
+        state = SEND
+
+WAIT_MAG:
+    conditions going into this state:
+        < MIN
+        PORTC == 0
+        Read_ok == 1
+        Recv_buf == Send_buf
+    conditions always true in this state:
+        PORTC == 0
+        Read_ok == 1
+    no send, recv bytes, unescaping them
+    if SYNC:
+        if < MIN:
+            Bytep = Buffer[Recv_buf];
+        else if Recv_buf == Send_buf:
+            switch Recv_buff
+        else:
+            PORTC = 1;
+            Read_ok = 0;
+            state = WAIT_MAG2
+    if mag && > MIN:
+        state = SEND
+
+WAIT_MAG2:
+    conditions going into this state:
+        Recv_buf is full
+        PORTC == 1
+        Read_ok == 0
+        Recv_buf != Send_buf
+    conditions always true in this state:
+        Recv_buf is full
+        PORTC == 1
+        Read_ok == 0
+        Recv_buf != Send_buf
+    no send, no recv
+    if mag:
+        PORTC = 0
+        Read_ok = 1
+        state = SEND

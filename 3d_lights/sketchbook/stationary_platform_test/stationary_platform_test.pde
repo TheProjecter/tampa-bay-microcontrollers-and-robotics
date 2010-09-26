@@ -25,6 +25,11 @@
 #line 25 "stationary_platform.pde"
 
 void
+help(void) {
+  Serial.println("h  -- help");
+}
+
+void
 setup(void) {
   // set up USART for 500K, 8-N-1, no interrupts
   UBRR0H = 0;
@@ -63,7 +68,7 @@ setup(void) {
   TIMSK0 = 0;     // disable interrupts: micros, millis and delay don't work
                   //                     from here on...
 
-  // Set up timer1 to tick at 4 uSec/tick.  Max range 262 mSec.
+  // Set up timer 1 to tick at 4 uSec/tick.  Max range 262 mSec.
   //
   // The plan is to reset the counter at the start of each revolution.  This
   // will only work if the rps is > 4.
@@ -77,12 +82,14 @@ setup(void) {
   TCCR1B = 0x03;  // prescaler: timer clk == cpu clk / 64
   // GTCCR = 1 will reset timer0-1 prescaler
 
-  // Set up timer2 to tick at .5 uSec/tick.
+  // Set up timer 2 to tick at .5 uSec/tick.
   TIMSK2 = 0;     // disable interrupts
   TCCR2A = 0;     // WGM = 0 (normal mode)
   TCCR2B = 0x02;  // prescaler: timer clk == cpu clk / 8
   ASSR = 0;
   // GTCCR = 2 will reset timer2 prescaler
+
+  help();
 }
 
 unsigned int Rotation;         // ticks/rotation (4 uSec/tick)
@@ -99,21 +106,14 @@ byte Ignore_next_escape = 0;
   if (UCSR0A & (1 << RXC0)) {           \
     if (Bytep <= Endp) {                \
       byte c = UDR0;                    \
-      if (Ignore_next_escape) {         \
-        Ignore_next_escape = 0;         \
-        *Bytep++ = c;                   \
-      } else {                          \
-        if (c == ESC_CHAR) {            \
-          Ignore_next_escape = 1;       \
-        } else if (c == SYNC_CHAR) {    \
-          Bytep = Endp + 1;             \
-        } else {                        \
-          *Bytep++ = c;                 \
-        }                               \
-      }                                 \
+      if (c == SYNC_CHAR) {             \
+        Bytep = Endp + 1;             \
+      } else {                        \
+        *Bytep++ = c;                 \
+      }                               \
     }                                   \
     if (Bytep >= Endp) {                \
-      PORTC = 1;    /* Stop PC */       \
+      PORTC = 1;                        \
     }                                   \
   }
 
@@ -125,16 +125,7 @@ byte Ignore_next_escape = 0;
   PORTB = 0;                            \
   RECV_TEST()
 
-#define MAG_CHECK(last_statement)                  \
-  if (!(PIND & 0x90) && TCNT1 > 5000) {            \
-    /* mag & switch closed == sync mode */         \
-    GTCCR = 1; /* reset timer0-1 prescaler */      \
-    unsigned int rotation = TCNT1;                 \
-    TCNT1 = 0;                                     \
-    Slice = (rotation + 25u) / 50u;                \
-    Rotation = rotation;                           \
-    last_statement;                                \
-  }
+#define MAG_CHECK(last_statement)  
 
 #define WAIT_UNTIL(time)                \
   while (TCNT2 < (time)) 
@@ -164,9 +155,9 @@ send_2_bytes(byte n1, byte n2) {
   WAIT_UNTIL(8*8+1);
   SEND_BIT(n1);         // bit 7 + stop bit
   MAG_CHECK(return 1);
-  bit = 0x01;           // next start bit
   WAIT_UNTIL(10*8);
 
+  bit = 0x01;
   SEND_BIT(n2);         // start bit
   WAIT_UNTIL(11*8+1);
   SEND_BIT(n2);         // bit 0
@@ -184,7 +175,6 @@ send_2_bytes(byte n1, byte n2) {
   SEND_BIT(n2);         // bit 6
   WAIT_UNTIL(18*8+1);
   SEND_BIT(n2);         // bit 7 + stop bit
-  // Should have about 25 uSec of idle time here...
   MAG_CHECK(return 1);
   WAIT_UNTIL(200);      // includes extra wait time for .1 mSec/column
   return 0;
@@ -192,22 +182,33 @@ send_2_bytes(byte n1, byte n2) {
 
 byte
 send_slice(byte *p) {
-  // This function takes .8 mSec to run.
+  // This function takes 1 mSec to run.
   for (byte i = 0; i < 16; i += 2) {
     if (send_2_bytes(p[i], p[i+1])) return 1;
+  }
+  // delay .2 mSec (sync pause at end of slice)
+  unsigned int end_time = TCNT1 + 50;
+  RECV_TEST();
+  if (Bytep <= Endp) PORTC = 0;  // enable hardware flow control
+  while (TCNT1 < end_time) {
+    if (Send_buf == Recv_buf && Bytep > Endp) {
+      PORTC = 0;                 // enable hardware flow control
+      Recv_buf ^= 1;
+      Bytep = Buffer[Recv_buf];
+      Endp = Bytep + 799;
+    }
+    // There may be up to 2 bytes left to recv.
+    RECV_TEST();
+    MAG_CHECK(return 1);
   }
   return 0;
 }
 
 byte
 send_frame(byte *p) {
-  // This sends one complete revolution (800 bytes).
-  // Timer1 (TCNT1) has been zeroed at the start of the revolution.
-  // Slice holds the number of Timer1 ticks per slice.
   unsigned int end_time = Slice;
   for (int i = 0; i < 800; i += 16) {
     if (send_slice(p + i)) return 1;
-    // There should be at least .2 mSec of idle time here:
     RECV_TEST();
     if (Bytep <= Endp) PORTC = 0;  // enable hardware flow control
     while (TCNT1 < end_time) {
@@ -227,9 +228,11 @@ send_frame(byte *p) {
 
 void
 send_256(void) {
+  Serial.println("Sending all 256 chars");
   for (int i = 0; i < 255; i += 2) {
     send_2_bytes(byte(i), byte(i + 1));
   }
+  Serial.println("sent");
 }
 
 void
@@ -237,9 +240,9 @@ loop(void) {
   byte start_frame = 0;
   if (PIND & 0x10) {    // switch open == async mode
     start_frame = 1;
-    GTCCR = 1;          // reset timer0-1 prescaler
+    GTCCR = 1; // reset timer0-1 prescaler
     TCNT1 = 0;
-    Slice = 250;        // 1 mSec
+    Slice = 250;
   } else MAG_CHECK(start_frame = 1)
 
   while (start_frame &&
