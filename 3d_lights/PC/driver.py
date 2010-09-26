@@ -22,15 +22,21 @@ def repeat_file(filename, devnum = 0):
     with open(filename) as f:
         data = f.read()
     print "file length is", len(data)
-    print repr(data)
-    if len(data) < 800:
-        assert len(data) % 16 == 0, "file length not multiple of 16"
-        assert 800 % len(data) == 0, "800 not multiple of file length"
-        data = (800 // len(data)) * data;
-        assert len(data) == 800
-    elif len(data) > 800:
+
+    if len(data) > 800:
         assert len(data) % 800 == 0, "file length not multiple of 800"
-    data = escape(data)
+
+    ans = []
+    for i in range(0, len(data), 800):
+        if len(data) - i < 800:
+            assert (len(data) - i) % 16 == 0, "file length not multiple of 16"
+            assert 800 % (len(data) - i) == 0, "800 not multiple of file length"
+            piece = (800 // (len(data) + i)) * data[i:];
+            assert len(piece) == 800
+        else:
+            piece = data[i:i+800]
+        ans.append(Sync_char + escape(piece))
+
+    data = ''.join(ans)
     print "escaped length is", len(data)
-    print repr(data)
-    comm.repeat(devnum, Sync_char + data, crtscts = True)
+    comm.repeat(devnum, data, crtscts = True)

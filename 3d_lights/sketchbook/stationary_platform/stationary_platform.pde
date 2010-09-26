@@ -91,31 +91,45 @@ unsigned int Slice;            // ticks/slice (4 uSec/tick)
 byte Buffer[2][800];
 byte Send_buf = 0;           // toggles between 0 and 1
 byte Recv_buf = 0;           // toggles between 0 and 1
-byte *Bytep = Buffer[Recv_buf];
+byte *Recv_start = Buffer[Recv_buf];
+byte *Bytep = Recv_start;
 byte *Endp = Bytep + 799;    // Set to last byte position to accept data into
 byte Ignore_next_escape = 0;
+byte Sync_seen = 0;
+byte Recv_ok = 1;
 
-#define RECV_TEST()                     \
-  if (UCSR0A & (1 << RXC0)) {           \
-    if (Bytep <= Endp) {                \
-      byte c = UDR0;                    \
-      if (Ignore_next_escape) {         \
-        Ignore_next_escape = 0;         \
-        *Bytep++ = c;                   \
-      } else {                          \
-        if (c == ESC_CHAR) {            \
-          Ignore_next_escape = 1;       \
-        } else if (c == SYNC_CHAR) {    \
-          Bytep = Endp + 1;             \
-        } else {                        \
-          *Bytep++ = c;                 \
-        }                               \
-      }                                 \
-    }                                   \
-    if (Bytep >= Endp) {                \
-      PORTC = 1;    /* Stop PC */       \
-    }                                   \
-  }
+#define WAIT_SYNC_START         0
+#define WAIT_MIN_START          1
+#define SEND                    2
+#define WAIT_SEND               3
+#define WAIT_MAG                4
+#define WAIT_MAG2               5
+
+byte State = WAIT_SYNC_START;
+
+#define RECV_TEST()                         \
+  if (Recv_ok && (UCSR0A & (1 << RXC0))) {  \
+    byte c = UDR0;                          \
+    if (Bytep <= Endp) {                    \
+      if (Ignore_next_escape) {             \
+        Ignore_next_escape = 0;             \
+        *Bytep++ = c;                       \
+      } else {                              \
+        if (c == SYNC_CHAR) {               \
+          PORTC = 1;                        \
+          Sync_seen = 1;                    \
+          Recv_ok = 0;                      \
+        } else if (c == ESC_CHAR) {         \
+          Ignore_next_escape = 1;           \
+        } else {                            \
+          *Bytep++ = c;                     \
+        }                                   \
+      }                                     \
+    } /* end if (Bytep <= Endp) */          \
+    if (Bytep >= Endp) {                    \
+      PORTC = 1;    /* Stop PC */           \
+    }                                       \
+  } /* end if (Recv_ok && byte ready) */
 
 // est 7 cpu cycles, excluding RECV_TEST
 #define SEND_BIT(n)                     \
@@ -125,6 +139,23 @@ byte Ignore_next_escape = 0;
   PORTB = 0;                            \
   RECV_TEST()
 
+#define CHECK_SYNC_SEEN()                                          \
+  if (Sync_seen) {                                                 \
+    if (Recv_buf == Send_buf) {                                    \
+      Recv_buf ^= 1;                                               \
+      Recv_start = Bytep = Buffer[Recv_buf];                       \
+      Endp = Bytep + 799;                                          \
+      PORTC = 0;                                                   \
+      Recv_ok = 1;                                                 \
+    } else if (Bytep - Recv_start < MIN_BYTES) {                   \
+      Bytep = Recv_start;  /* incomplete results, throw it away */ \
+      PORTC = 0;                                                   \
+      Recv_ok = 1;                                                 \
+    } else {                                                       \
+      State = WAIT_SEND;                                           \
+    }                                                              \
+  }
+
 #define MAG_CHECK(last_statement)                  \
   if (!(PIND & 0x90) && TCNT1 > 5000) {            \
     /* mag & switch closed == sync mode */         \
@@ -133,6 +164,23 @@ byte Ignore_next_escape = 0;
     TCNT1 = 0;                                     \
     Slice = (rotation + 25u) / 50u;                \
     Rotation = rotation;                           \
+    Send_buf ^= 1;                                 \
+    if (Recv_buf == Send_buf) {                    \
+      if (Bytep - Recv_start < MIN_BYTES) {        \
+        State = WAIT_MAG;                          \
+      }                                            \
+    } else {                                       \
+      Recv_buf ^= 1;                               \
+      Recv_start = Bytep = Buffer[Recv_buf];       \
+      Endp = Bytep + 799;                          \
+      if (State == WAIT_SEND) {                    \
+        PORTC = 0;                                 \
+        Recv_ok = 1;                               \
+        State = SEND;                              \
+      } else {                                     \
+        State = WAIT_SYNC_START;                   \
+      }                                            \
+    }                                              \
     last_statement;                                \
   }
 
@@ -163,6 +211,7 @@ send_2_bytes(byte n1, byte n2) {
   SEND_BIT(n1);         // bit 6
   WAIT_UNTIL(8*8+1);
   SEND_BIT(n1);         // bit 7 + stop bit
+  CHECK_SYNC_SEEN();
   MAG_CHECK(return 1);
   bit = 0x01;           // next start bit
   WAIT_UNTIL(10*8);
@@ -185,6 +234,7 @@ send_2_bytes(byte n1, byte n2) {
   WAIT_UNTIL(18*8+1);
   SEND_BIT(n2);         // bit 7 + stop bit
   // Should have about 25 uSec of idle time here...
+  CHECK_SYNC_SEEN();
   MAG_CHECK(return 1);
   WAIT_UNTIL(200);      // includes extra wait time for .1 mSec/column
   return 0;
@@ -234,35 +284,89 @@ send_256(void) {
 
 void
 loop(void) {
-  byte start_frame = 0;
-  if (PIND & 0x10) {    // switch open == async mode
-    start_frame = 1;
-    GTCCR = 1;          // reset timer0-1 prescaler
-    TCNT1 = 0;
-    Slice = 250;        // 1 mSec
-  } else MAG_CHECK(start_frame = 1)
-
-  while (start_frame &&
-         (Send_buf != Recv_buf || Bytep > Buffer[Recv_buf] + MIN_BYTES)
-  ) {
-    start_frame = send_frame(Buffer[Send_buf]);
-    Send_buf ^= 1;
-  }
-
-  RECV_TEST();
-  if (Bytep <= Endp) PORTC = 0;  // enable hardware flow control
-  if (Send_buf == Recv_buf && Bytep > Endp) {
-    PORTC = 0;                   // enable hardware flow control
-    Recv_buf ^= 1;
-    Bytep = Buffer[Recv_buf];
-    Endp = Bytep + 799;
-  }
-
-  if (!(PIND & 0x20)) { // push button down
-    send_256();
-    TCNT1 = 0;
-    while (TCNT1 < 62500u) ;    // delay 250 mSec
-    TCNT1 = 0;
-    while (TCNT1 < 62500u) ;    // delay 250 mSec
-  }
+  switch (State) {
+  case WAIT_SYNC_START:
+    if (UCSR0A & (1 << RXC0)) {
+      byte c = UDR0;
+      if (Ignore_next_escape) Ignore_next_escape = 0;
+      else if (c == ESC_CHAR) Ignore_next_escape = 1;
+      else if (c == SYNC_CHAR) State = WAIT_MIN_START;
+    }
+    if (!(PIND & 0x20)) { // push button down
+      send_256();
+      TCNT1 = 0;
+      while (TCNT1 < 62500u) ;    // delay 250 mSec
+      TCNT1 = 0;
+      while (TCNT1 < 62500u) ;    // delay 250 mSec
+    }
+    break;
+  case WAIT_MIN_START:
+    if (UCSR0A & (1 << RXC0)) {
+      byte c = UDR0;
+      if (Ignore_next_escape) {
+        Ignore_next_escape = 0;
+        if (Bytep <= Endp) *Bytep++ = c;
+      } else if (c == ESC_CHAR) Ignore_next_escape = 1;
+      else if (c == SYNC_CHAR) {
+        if (Bytep - Recv_start < MIN_BYTES) {
+          Bytep = Recv_start;  // incomplete, throw away data
+        } else if (Recv_buf == Send_buf) {
+          Recv_buf ^= 1;
+          Bytep = Recv_start = Buffer[Recv_buf];
+        } else {
+          PORTC = 1;
+          Recv_ok = 0;
+          State = WAIT_SEND;
+        }
+      } else if (Bytep <= Endp) *Bytep++ = c;
+    }
+    if ((!(PIND & 0x80) || (PIND & 0x10)) && TCNT1 > 5000) {
+      // mag || switch open == async mode
+      GTCCR = 1; // reset timer0-1 prescaler
+      unsigned int rotation = TCNT1;
+      TCNT1 = 0;
+      Slice = (rotation + 25u) / 50u;
+      Rotation = rotation;
+      State = SEND;
+    }
+    break;
+  case SEND:
+  case WAIT_SEND:
+    send_frame(Buffer[Send_buf]);
+    break;
+  case WAIT_MAG:
+    if (UCSR0A & (1 << RXC0)) {
+      byte c = UDR0;
+      if (Ignore_next_escape) {
+        Ignore_next_escape = 0;
+        if (Bytep <= Endp) *Bytep++ = c;
+      } else if (c == ESC_CHAR) Ignore_next_escape = 1;
+      else if (c == SYNC_CHAR) {
+        if (Bytep - Recv_start < MIN_BYTES) {
+          Bytep = Recv_start;  // incomplete, throw data away
+        } else if (Recv_buf == Send_buf) {
+          Recv_buf ^= 1;
+          Bytep = Recv_start = Buffer[Recv_buf];
+          Endp = Bytep + 799;
+        } else {
+          PORTC = 1;
+          Recv_ok = 0;
+          State = WAIT_MAG2;
+        }
+      } else if (Bytep <= Endp) *Bytep++ = c;
+    }
+    if ((!(PIND & 0x80) || (PIND & 0x10)) && TCNT1 > 5000 && 
+        Bytep - Recv_start > MIN_BYTES
+    ) {
+      State = SEND;
+    }
+    break;
+  case WAIT_MAG2:
+    if ((!(PIND & 0x80) || (PIND & 0x10)) && TCNT1 > 5000) {
+      PORTC = 0;
+      Recv_ok = 1;
+      State = SEND;
+    }
+    break;
+  } // end switch (State)
 }

@@ -56,7 +56,6 @@ SEND:
     if SYNC:
         if Recv_buf == Send_buf:
             switch Recv_buf
-            PORTC = 0  // is this really necesary?
         else if < MIN:
             Bytep = Buffer[Recv_buf];   // start over
         else:
@@ -73,7 +72,12 @@ SEND:
                 state = WAIT_MAG        // data not ready for this rev...
         else:
             switch Recv_buf
-            state = WAIT_SYNC_START
+            if state == WAIT_SEND:
+                PORTC = 0
+                Read_ok = 1
+                state = SEND
+            else:
+                state = WAIT_SYNC_START
 
 WAIT_SEND:
     conditions going into this state:
