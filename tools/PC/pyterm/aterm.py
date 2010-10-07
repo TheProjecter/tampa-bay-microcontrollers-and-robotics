@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 # aterm.py
 
 from __future__ import with_statement
@@ -23,40 +25,51 @@ class terminal(object):
         if consumer:
             self.push_consumer(consumer)
             self.start()
+
     def __enter__(self):
         return self
+
     def __exit__(self, exc_type = None, exc_value = None, exc_tb = None):
         #sys.stderr.write("%s.__exit__\n" % self.name)
         self.close()
         return False
+
     def listening_to(self, producer):
         assert not self.closed
         self.listening_list.append(producer)
+
     def not_listening_to(self, producer):
         self.listening_list.remove(producer)
+
     def close(self):
         if not self.closed:
             for producer in self.listening_list: producer.pop_consumer(self)
             self.do_close()
             self.closed = True
+
     def start(self):
         #sys.stderr.write("%s: start called\n" % self.name)
         assert self.thread is None, "%s: started twice!" % self.name
         assert self.destinations, "%s: start with no push_consumer" % self.name
         self.do_start()
+
     def do_start(self):
         self.thread = threading.Thread(target=self.run, name=self.name)
         self.thread.setDaemon(True)
         #sys.stderr.write("%s: starting thread\n" % self.name)
         self.thread.start()
+
     def thread_init(self):
         pass
+
     def push_consumer(self, consumer):
         self.destinations.insert(0, consumer)
         consumer.listening_to(self)
+
     def pop_consumer(self, consumer):
         self.destinations.remove(consumer)
         consumer.not_listening_to(self)
+
     def run(self):
         try:
             #sys.stderr.write("%s running, pid is %d\n" %
@@ -95,25 +108,29 @@ class terminal(object):
 class usb(terminal):
     close_on_eof = False
     read_len = None
-    def __init__(self, devnum = 0, timeout = 0, baud = None):
+    def __init__(self, devnum = 0, timeout = 0, baud = B57600):
         super(usb, self).__init__()
         if baud is None:
             self.fd = comm.open(devnum, timeout)
         else:
             self.fd = comm.open(devnum, timeout, baud = baud)
         self.name = "usb%d" % devnum
+
     def do_start(self):
         try:
             self.run()  # <== close on KeyboardInterrupt done here
         except KeyboardInterrupt:
             #sys.stderr.write("%s: caught KeyboardInterrupt\n" % self.name)
             pass
+
     def read(self, n):
         return os.read(self.fd, n)
+
     def write(self, s):
         while s:
             l = os.write(self.fd, s)
             s = s[l:]
+
     def do_close(self):
         os.close(self.fd)
 
@@ -129,9 +146,11 @@ class linux_terminal(terminal):
             ans = ''
         #sys.stderr.write("linux_terminal read: %r\n" % (ans,))
         return ans
+
     def write(self, s):
         sys.stdout.write(escape(s.replace('\r', '')))
         #sys.stdout.write(escape(s))
+
     def do_close(self):
         #sys.stderr.write("%s: interrupting main\n" % self.name)
         os.kill(os.getpid(), signal.SIGINT)
@@ -152,6 +171,7 @@ class shell(terminal):
         self.linux = linux
         self.arduino = arduino
         self.commands = commands
+
     def write(self, s):
         if s[0] != '!': self.arduino.write(s)
         else:
@@ -180,7 +200,7 @@ class shell(terminal):
                 self.commands[args[0]](out, close, self.arduino, *args[1:])
                 #sys.stderr.write("%s: command returned\n" % self.name)
 
-def start(devnum = 0, timeout = 0, baud = None):
+def start(devnum = 0, timeout = 0, baud = B57600):
     with usb(devnum, timeout, baud) as arduino:
         with linux_terminal() as linux:
             arduino.push_consumer(linux)
@@ -193,3 +213,6 @@ def start(devnum = 0, timeout = 0, baud = None):
             #sys.stderr.write("did linux.start()\n")
             arduino.start()
             #sys.stderr.write("aterm.start done\n")
+
+if __name__ == "__main__":
+    start()

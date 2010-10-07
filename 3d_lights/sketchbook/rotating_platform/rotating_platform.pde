@@ -12,8 +12,8 @@ Pin assignments:
     analog pins 3-5
   
   3 LED row address bits (least to most significant):
-    pin 1 (labeled TX on Arduino)
-    analog pin 2
+    pin 1 (labeled TX on Arduino), also serves as LED TEST button (on LOW)
+    analog pin 2, also serves as COMM TEST button (on LOW)
     pin 13
   
   IrDA RX line:
@@ -61,14 +61,14 @@ UBRR0L  - baud rate register, 1=500K, 3=250K
 
 *********************************************************/
 
-void
-turn_column_off(void) {
-  PORTB = PORTC = PORTD = 0;
-}
+#define TURN_COLUMN_OFF()       \
+  PORTB = 0;                    \
+  PORTC = 0;                    \
+  PORTD = 0
 
 void
 set_column(byte b1, byte b2, byte column) {
-  turn_column_off();
+  TURN_COLUMN_OFF();
   column <<= 1;
   byte d = (b1 & 0xFC) | (column & 0x02);
   byte b = ((column << 2) & 0x20) | (b2 & 0x1F);
@@ -77,7 +77,7 @@ set_column(byte b1, byte b2, byte column) {
   PORTC = c;
   PORTD = d;
   GTCCR = 2;     // reset prescalar for timer2
-  TCNT2 = 0;     // set timer2 value to 0
+  TCNT2 = 255;   // set timer2 value to 0xFF
   TIFR2 = 6;     // reset OCF2A and OCF2B match flags
   TIMSK2 = 0x06; // enable compare match OCR2A and OCR2B interrupt
 }
@@ -85,7 +85,7 @@ set_column(byte b1, byte b2, byte column) {
 ISR(TIMER2_COMPA_vect) {
   TIMSK2 = 0x04;   // disable compare match OCR2A interrupt,
                    // leave OCR2B match enabled.
-  turn_column_off();
+  TURN_COLUMN_OFF();
 }
 
 byte Column;
@@ -165,8 +165,10 @@ setup(void) {
   // set up Timer2 in normal mode with prescaler of 32 (2uSec per timer tick).
   // TCNT2 has timer count.
   // GTCCR = 2 to reset prescaler count
-  OCR2A = 49;     // .1mSec (100uSec)
-  OCR2B = 74;     // .15mSec (150uSec)
+  OCR2A = 48;     // .1mSec (100uSec)
+                  // (50 - 1 delay - 1 for TCNT2 starting at 0xFF rather than 0)
+  OCR2B = 73;     // .15mSec (150uSec)
+                  // (75 - 1 delay - 1 for TCNT2 starting at 0xFF rather than 0)
   ASSR = 0;
   TIMSK2 = 0;     // disable interrupts
   TCCR2A = 0x03;  // fast PWM mode
@@ -194,19 +196,35 @@ setup(void) {
 
 void
 loop(void) {
+  // Get first byte for column:
   while (!(UCSR0A & (1 << RXC0))) ;
   Byte1 = UDR0;
+
+  // Get second byte for column:
   for (;;) {   // This should only ever loop once or twice.  After the second
                // loop, Loop_again would not be set again because the
                // interrupts are disabled.
     Loop_again = 0;     // set by OCR2B timer interrupt if .15mSec passes
     while (!(UCSR0A & (1 << RXC0))) ;
-    if (Loop_again) Byte1 = UDR0;
-    else {
+    if (Loop_again) {
+      // The 150uSec timer fired!  This is our clue to resync to Column 7.
+      // This byte is the first byte after the pause and should really be the
+      // first byte of Column 7.  (The timer interrupt sets the Column to 7).
+      Byte1 = UDR0;
+      // loop around again to get Byte2...
+    } else {
+      // No pause between these two bytes, so we have the second byte for the
+      // column now:
       Byte2 = UDR0;
       break;
     }
   }
+
+  // Turn the Byte1/Byte2 LEDs on for the Column.  This resets the timers too.
   set_column(Byte1, Byte2, Column);
+
+  // Decrement Column for the next Column.  This will get overwritten to 7 by
+  // the 150uSec timer firing, so that in any case, the Column is set right
+  // for the next set of bytes.
   Column = (Column - 1) & 0x07;
 }

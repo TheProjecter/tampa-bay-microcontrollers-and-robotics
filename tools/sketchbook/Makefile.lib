@@ -1,0 +1,885 @@
+# Arduino makefile
+#
+# This makefile builds the arduino libraries from the command line
+# without the Arduino environment (or Java).
+#
+# Instructions for using the makefile:
+#
+#  1. Copy this file into the arduino folder.
+#
+#  2. Modify the MCU and F_CPU variables to match your microcontroller.
+#
+#  3. Type "make depend" and press enter to add dependencies to the Makefile.
+#
+#  4. Type "make" and press enter to compile the arduino libraries.
+#
+# $Id: Makefile,v 1.7 2007/04/13 05:28:23 eighthave Exp $
+
+#MCU := atmega168p
+MCU := atmega328p
+#MCU := atmega1280
+F_CPU := 16000000L
+
+ARDUINO := .
+ARDUINO_SRC := $(ARDUINO)/hardware/arduino/cores/arduino
+ARDUINO_LIB_SRC := $(ARDUINO)/libraries
+ARDUINO_LIBS := $(wildcard $(ARDUINO_LIB_SRC)/*)
+ARDUINO_UTILITY_LIBS := $(wildcard $(ARDUINO_LIBS:%=%/utility))
+INCLUDE := -I$(ARDUINO_SRC) \
+           $(ARDUINO_LIBS:%=-I%) \
+           $(ARDUINO_UTILITY_LIBS:%=-I%) \
+           -I$(ARDUINO_LIB_SRC)
+SRC := $(wildcard $(ARDUINO_SRC)/*.c) $(wildcard $(ARDUINO_LIB_SRC)/*/*.c) \
+       $(wildcard $(ARDUINO_LIB_SRC)/*/*/*.c)
+CXXSRC := $(wildcard $(ARDUINO_SRC)/*.cpp) \
+	  $(wildcard $(ARDUINO_LIB_SRC)/*/*.cpp) \
+	  $(wildcard $(ARDUINO_LIB_SRC)/*/*/*.cpp)
+HEADERS := $(wildcard $(ARDUINO_SRC)/*.h) \
+	   $(wildcard $(ARDUINO_LIBS)/*.h) \
+	   $(wildcard $(ARDUINO_LIBS)/*/*.h)
+
+OBJDIR := $(ARDUINO)/lib/microcontrollers
+LIBRARY := $(OBJDIR)/$(MCU)-$(F_CPU).a
+
+# Name of this Makefile (used for "make depend").
+MAKEFILE := Makefile
+
+# Debugging format.
+# Native formats for AVR-GCC's -g are stabs [default], or dwarf-2.
+# AVR (extended) COFF requires stabs, plus an avr-objcopy run.
+#DEBUG = stabs
+DEBUG =
+
+OPT = s
+
+# Place -D or -U options here
+CDEFS := -DF_CPU=$(F_CPU) -DARDUINO=19
+CXXDEFS := -DF_CPU=$(F_CPU) -DARDUINO=19
+
+# Compiler flag to set the C Standard level.
+# c89   - "ANSI" C
+# gnu89 - c89 plus GCC extensions
+# c99   - ISO C99 standard (not yet fully implemented)
+# gnu99 - c99 plus GCC extensions
+CSTANDARD := -std=gnu99
+CDEBUG := -g$(DEBUG)
+CXXWARN := -Wall
+CWARN := $(CXXWARN) -Wstrict-prototypes
+#CTUNING := -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums
+CTUNING := -ffunction-sections -fdata-sections
+CXXTUNING := -fno-exceptions $(CTUNING)
+#CEXTRA := -Wa,-adhlns=$(<:.c=.lst)
+
+CFLAGS := $(CDEBUG) $(CDEFS) $(INCLUDE) -O$(OPT) $(CWARN) $(CSTANDARD) \
+          $(CTUNING) $(CEXTRA)
+CXXFLAGS := $(CDEBUG) $(CXXDEFS) $(INCLUDE) -O$(OPT) $(CXXWARN) \
+            $(CXXTUNING) $(CEXTRA)
+
+#ASFLAGS := -Wa,-adhlns=$(<:.S=.lst),-gstabs 
+LDFLAGS := 
+
+ARFLAGS := crv
+
+
+# Program settings
+CC := avr-gcc 
+CXX := avr-g++
+OBJCOPY := avr-objcopy
+OBJDUMP := avr-objdump
+SIZE := avr-size
+NM := avr-nm
+REMOVE := rm -f
+MV := mv -f
+
+# Define all object files.
+#OBJ := $(patsubst %.c,$(LIBRARY)(%.o),$(notdir $(SRC))) \
+#       $(patsubst %.cpp,$(LIBRARY)(%.o),$(notdir $(CXXSRC))) \
+#       $(patsubst %.S,$(LIBRARY)(%.o),$(notdir $(ASRC)))
+#OBJ := $(patsubst %.c,%.o,$(notdir $(SRC))) \
+#       $(patsubst %.cpp,%.o,$(notdir $(CXXSRC))) \
+#       $(patsubst %.S,%.o,$(notdir $(ASRC)))
+OBJ := $(patsubst %.c,%.o,$(SRC)) \
+       $(patsubst %.cpp,%.o,$(CXXSRC)) \
+       $(patsubst %.S,%.o,$(ASRC))
+
+# Define all listing files.
+LST := $(ASRC:.S=.lst) $(CXXSRC:.cpp=.lst) $(SRC:.c=.lst)
+
+# Combine all necessary flags and optional flags.
+# Add target processor to flags.
+ALL_CFLAGS := -mmcu=$(MCU) -I. $(CFLAGS)
+ALL_CXXFLAGS := -mmcu=$(MCU) -I. $(CXXFLAGS)
+ALL_ASFLAGS := -mmcu=$(MCU) -I. -x assembler-with-cpp $(ASFLAGS)
+
+
+# Default target.
+all: $(OBJ:%=$(LIBRARY)(%))
+
+
+#%.o: %.c
+#	echo target: $@, source: $<
+
+# Compile: create object files from C++ source files.
+.cpp.o:
+	$(CXX) -c $(ALL_CXXFLAGS) $< -o $@ 
+
+# Compile: create object files from C source files.
+.c.o:
+	$(CC)  -c $(ALL_CFLAGS) $< -o $@ 
+
+
+# Compile: create assembler files from C source files.
+.c.s:
+	$(CC) -S $(ALL_CFLAGS) $< -o $@
+
+
+# Assemble: create object files from assembler source files.
+.S.o:
+	$(CC) -c $(ALL_ASFLAGS) $< -o $@
+
+
+# Target: clean project.
+clean:
+	$(REMOVE) -- $(OBJ) $(LST) $(SRC:.c=.s) $(SRC:.c=.d) \
+          $(CXXSRC:.cpp=.s) $(CXXSRC:.cpp=.d)
+
+depend:
+	if grep '^# DO NOT DELETE' $(MAKEFILE) >/dev/null; \
+	then \
+		sed -e '/^# DO NOT DELETE/,$$d' $(MAKEFILE) > \
+			$(MAKEFILE).$$$$ && \
+		$(MV) $(MAKEFILE).$$$$ $(MAKEFILE); \
+	fi
+	echo '# DO NOT DELETE THIS LINE -- make depend depends on it.' \
+		>> $(MAKEFILE); \
+	($(CC) -M -mmcu=$(MCU) $(CDEFS) $(INCLUDE) $(SRC) $(ASRC); \
+	 $(CXX) -M -mmcu=$(MCU) $(CXXDEFS) $(INCLUDE) $(CXXSRC)) \
+	  | sed '\,^\([^ :]*\): \([^ ]*\)/\([^ /]*\),s,,\2/\1: \2/\3,' \
+	   >> $(MAKEFILE)
+
+.PHONY:	all build eep lss sym coff extcoff clean depend pd_close_serial pd_test
+
+# for emacs
+etags:
+	make etags_`uname -s`
+	etags *.pde \
+		$(ARDUINO_SRC)/*.[ch] \
+		$(ARDUINO_SRC)/*.cpp \
+		$(ARDUINO_LIB_SRC)/*/*.[ch] \
+		$(ARDUINO_LIB_SRC)/*/*.cpp \
+		$(ARDUINO)/hardware/tools/avr/avr/include/avr/*.[ch] \
+		$(ARDUINO)/hardware/tools/avr/avr/include/*.[ch]
+
+etags_Darwin:
+#	etags -a 
+
+etags_Linux:
+#	etags -a /usr/include/*.h linux/input.h /usr/include/sys/*.h
+
+etags_MINGW:
+#	etags -a /usr/include/*.h /usr/include/sys/*.h 
+
+
+test:
+	@echo '$$(notdir $$(SRC))'
+	@echo $(notdir $(SRC))
+	@echo '$$(notdir $$(CXXSRC))'
+	@echo $(notdir $(CXXSRC))
+	@echo '$$(notdir $$(ASRC))'
+	@echo $(notdir $(ASRC))
+	@echo '$$(ARDUINO_LIBS)'
+	@echo $(ARDUINO_LIBS)
+	@echo '$$(ARDUINO_UTILITY_LIBS)'
+	@echo $(ARDUINO_UTILITY_LIBS)
+	@echo '$$(LIBRARY)'
+	@echo $(LIBRARY)
+	@echo '$$(OBJ)'
+	@echo "$(OBJ)"
+
+# DO NOT DELETE THIS LINE -- make depend depends on it.
+hardware/arduino/cores/arduino/pins_arduino.o: hardware/arduino/cores/arduino/pins_arduino.c \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  hardware/arduino/cores/arduino/wiring_private.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay_basic.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/pins_arduino.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h
+hardware/arduino/cores/arduino/WInterrupts.o: hardware/arduino/cores/arduino/WInterrupts.c \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  hardware/arduino/cores/arduino/WConstants.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/wiring_private.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay_basic.h
+hardware/arduino/cores/arduino/wiring_analog.o: hardware/arduino/cores/arduino/wiring_analog.c \
+  hardware/arduino/cores/arduino/wiring_private.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay_basic.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/pins_arduino.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h
+hardware/arduino/cores/arduino/wiring.o: hardware/arduino/cores/arduino/wiring.c \
+  hardware/arduino/cores/arduino/wiring_private.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay_basic.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  hardware/arduino/cores/arduino/binary.h
+hardware/arduino/cores/arduino/wiring_digital.o: hardware/arduino/cores/arduino/wiring_digital.c \
+  hardware/arduino/cores/arduino/wiring_private.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay_basic.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/pins_arduino.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h
+hardware/arduino/cores/arduino/wiring_pulse.o: hardware/arduino/cores/arduino/wiring_pulse.c \
+  hardware/arduino/cores/arduino/wiring_private.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay_basic.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/pins_arduino.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h
+hardware/arduino/cores/arduino/wiring_shift.o: hardware/arduino/cores/arduino/wiring_shift.c \
+  hardware/arduino/cores/arduino/wiring_private.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay_basic.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  hardware/arduino/cores/arduino/binary.h
+libraries/Wire/utility/twi.o: libraries/Wire/utility/twi.c \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/compat/twi.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/twi.h \
+  libraries/Wire/utility/twi.h
+hardware/arduino/cores/arduino/HardwareSerial.o: hardware/arduino/cores/arduino/HardwareSerial.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/wiring_private.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/util/delay_basic.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h
+hardware/arduino/cores/arduino/main.o: hardware/arduino/cores/arduino/main.cpp \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h
+hardware/arduino/cores/arduino/Print.o: hardware/arduino/cores/arduino/Print.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/Print.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h
+hardware/arduino/cores/arduino/Tone.o: hardware/arduino/cores/arduino/Tone.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/pins_arduino.h
+hardware/arduino/cores/arduino/WMath.o: hardware/arduino/cores/arduino/WMath.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h
+hardware/arduino/cores/arduino/WString.o: hardware/arduino/cores/arduino/WString.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h
+libraries/EEPROM/EEPROM.o: libraries/EEPROM/EEPROM.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/eeprom.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/WConstants.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  hardware/arduino/cores/arduino/binary.h libraries/EEPROM/EEPROM.h
+libraries/Ethernet/Client.o: libraries/Ethernet/Client.cpp \
+  libraries/Ethernet/utility/w5100.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  libraries/SPI/SPI.h /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h \
+  libraries/Ethernet/utility/socket.h libraries/Ethernet/utility/w5100.h \
+  libraries/Ethernet/Ethernet.h libraries/Ethernet/Client.h \
+  hardware/arduino/cores/arduino/Print.h libraries/Ethernet/Server.h
+libraries/Ethernet/Ethernet.o: libraries/Ethernet/Ethernet.cpp \
+  libraries/Ethernet/utility/w5100.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  libraries/SPI/SPI.h /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h libraries/Ethernet/Ethernet.h \
+  libraries/Ethernet/Client.h hardware/arduino/cores/arduino/Print.h \
+  libraries/Ethernet/Server.h
+libraries/Ethernet/Server.o: libraries/Ethernet/Server.cpp \
+  libraries/Ethernet/utility/w5100.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  libraries/SPI/SPI.h /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h \
+  libraries/Ethernet/utility/socket.h libraries/Ethernet/utility/w5100.h \
+  libraries/Ethernet/Ethernet.h libraries/Ethernet/Client.h \
+  hardware/arduino/cores/arduino/Print.h libraries/Ethernet/Server.h
+libraries/Ethernet/Udp.o: libraries/Ethernet/Udp.cpp libraries/Ethernet/utility/w5100.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  libraries/SPI/SPI.h /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h \
+  libraries/Ethernet/utility/socket.h libraries/Ethernet/utility/w5100.h \
+  libraries/Ethernet/Ethernet.h libraries/Ethernet/Client.h \
+  hardware/arduino/cores/arduino/Print.h libraries/Ethernet/Server.h \
+  libraries/Ethernet/Udp.h
+libraries/Firmata/Firmata.o: libraries/Firmata/Firmata.cpp \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  libraries/Firmata/Firmata.h libraries/Firmata/Boards.h
+libraries/LiquidCrystal/LiquidCrystal.o: libraries/LiquidCrystal/LiquidCrystal.cpp \
+  libraries/LiquidCrystal/LiquidCrystal.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  hardware/arduino/cores/arduino/Print.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h
+libraries/Matrix/Matrix.o: libraries/Matrix/Matrix.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/WConstants.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  hardware/arduino/cores/arduino/binary.h libraries/Sprite/Sprite.h \
+  libraries/Sprite/binary.h libraries/Matrix/Matrix.h
+libraries/Servo/Servo.o: libraries/Servo/Servo.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h libraries/Servo/Servo.h
+libraries/SoftwareSerial/SoftwareSerial.o: libraries/SoftwareSerial/SoftwareSerial.cpp \
+  hardware/arduino/cores/arduino/WConstants.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  hardware/arduino/cores/arduino/binary.h \
+  libraries/SoftwareSerial/SoftwareSerial.h
+libraries/SPI/SPI.o: libraries/SPI/SPI.cpp \
+  hardware/arduino/cores/arduino/pins_arduino.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  libraries/SPI/SPI.h /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h
+libraries/Sprite/Sprite.o: libraries/Sprite/Sprite.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h libraries/Sprite/Sprite.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  libraries/Sprite/binary.h
+libraries/Stepper/Stepper.o: libraries/Stepper/Stepper.cpp \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h libraries/Stepper/Stepper.h
+libraries/Wire/Wire.o: libraries/Wire/Wire.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  libraries/Wire/utility/twi.h libraries/Wire/Wire.h
+libraries/Ethernet/utility/socket.o: libraries/Ethernet/utility/socket.cpp \
+  libraries/Ethernet/utility/w5100.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  libraries/SPI/SPI.h /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h \
+  libraries/Ethernet/utility/socket.h
+libraries/Ethernet/utility/w5100.o: libraries/Ethernet/utility/w5100.cpp \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdio.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/inttypes.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdint.h \
+  /usr/lib/gcc/avr/4.3.4/include/stdarg.h \
+  /usr/lib/gcc/avr/4.3.4/include/stddef.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/string.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/interrupt.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/io.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/sfr_defs.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/iom328p.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/portpins.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/common.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/version.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/fuse.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/lock.h \
+  libraries/Ethernet/utility/w5100.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/avr/pgmspace.h \
+  libraries/SPI/SPI.h hardware/arduino/cores/arduino/WProgram.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/stdlib.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/math.h \
+  hardware/arduino/cores/arduino/wiring.h \
+  hardware/arduino/cores/arduino/binary.h \
+  hardware/arduino/cores/arduino/WString.h \
+  /usr/lib/gcc/avr/4.3.4/../../../avr/include/ctype.h \
+  hardware/arduino/cores/arduino/HardwareSerial.h \
+  hardware/arduino/cores/arduino/Stream.h \
+  hardware/arduino/cores/arduino/Print.h
