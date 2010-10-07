@@ -45,105 +45,100 @@
 #
 # $Id: Makefile,v 1.7 2007/04/13 05:28:23 eighthave Exp $
 
-PORT = /dev/ttyUSB*
-TARGET := $(shell pwd | sed 's|.*/\(.*\)|\1|')
-ARDUINO = $(HOME)/arduino-0019
-ARDUINO_SRC = $(ARDUINO)/hardware/arduino/cores/arduino
-ARDUINO_LIB_SRC = $(ARDUINO)/libraries
-ARDUINO_LIBS = $(wildcard $(ARDUINO_LIB_SRC)/*)
-ARDUINO_TOOLS = $(ARDUINO)/tools
-INCLUDE = -I$(ARDUINO_SRC) \
-	-I$(ARDUINO_LIB_SRC)/EEPROM \
-	-I$(ARDUINO_LIB_SRC)/Firmata \
-	-I$(ARDUINO_LIB_SRC)/Matrix \
-	-I$(ARDUINO_LIB_SRC)/Servo \
-	-I$(ARDUINO_LIB_SRC)/Wire \
-	-I$(ARDUINO_LIB_SRC)
-SRC = $(wildcard $(ARDUINO_SRC)/*.c) $(wildcard $(ARDUINO_LIB_SRC)/*/*.c) \
-      $(wildcard $(ARDUINO_LIB_SRC)/*/*/*.c)
-CXXSRC = applet/$(TARGET).cpp $(wildcard $(ARDUINO_SRC)/*.cpp) \
-	 $(wildcard $(ARDUINO_LIB_SRC)/*/*.cpp) \
-	 $(wildcard $(ARDUINO_LIB_SRC)/*/*/*.cpp)
-HEADERS = $(wildcard $(ARDUINO_SRC)/*.h) \
-	  $(wildcard $(ARDUINO_LIB_SRC)/*/*.h) \
-	  $(wildcard $(ARDUINO_LIB_SRC)/*/*/*.h)
+#MCU := atmega168p
+MCU := atmega328p
+#MCU := atmega1280
+F_CPU := 16000000L
+FORMAT := ihex
+UPLOAD_RATE := 57600
 
+PORT := /dev/ttyUSB*
+TARGET := $(patsubst %.pde,%,$(wildcard *.pde))
+ARDUINO := $(HOME)/arduino-0019
+ARDUINO_SRC := $(ARDUINO)/hardware/arduino/cores/arduino
+ARDUINO_LIB_SRC := $(ARDUINO)/libraries
+ARDUINO_LIBS := $(wildcard $(ARDUINO_LIB_SRC)/*)
+ARDUINO_UTILITY_LIBS := $(wildcard $(ARDUINO_LIBS:%=%/utility))
+ARDUINO_LIBRARY := $(ARDUINO)/lib/microcontrollers/$(MCU)-$(F_CPU).a
+ARDUINO_TOOLS := $(ARDUINO)/tools
+INCLUDE := -I$(ARDUINO_SRC) \
+	   $(ARDUINO_LIBS:%=-I%) \
+	   $(ARDUINO_UTILITY_LIBS:%=-I%) \
+	   -I$(ARDUINO_LIB_SRC)
+SRC := 
+CXXSRC := applet/$(TARGET).cpp
 
-#MCU = atmega168p
-MCU = atmega328p
-#MCU = atmega1280
-F_CPU = 16000000L
-FORMAT = ihex
-UPLOAD_RATE = 57600
 
 # Name of this Makefile (used for "make depend").
-MAKEFILE = Makefile
+MAKEFILE := Makefile
 
 # Debugging format.
 # Native formats for AVR-GCC's -g are stabs [default], or dwarf-2.
 # AVR (extended) COFF requires stabs, plus an avr-objcopy run.
-#DEBUG = stabs
-DEBUG =
+#DEBUG := stabs
+DEBUG :=
 
-OPT = s
+OPT := s
 
 # Place -D or -U options here
-CDEFS = -DF_CPU=$(F_CPU) -DARDUINO=19
-CXXDEFS = -DF_CPU=$(F_CPU) -DARDUINO=19
+CDEFS := -DF_CPU=$(F_CPU) -DARDUINO=19
+CXXDEFS := -DF_CPU=$(F_CPU) -DARDUINO=19
 
 # Compiler flag to set the C Standard level.
 # c89   - "ANSI" C
 # gnu89 - c89 plus GCC extensions
 # c99   - ISO C99 standard (not yet fully implemented)
 # gnu99 - c99 plus GCC extensions
-CSTANDARD = -std=gnu99
-CDEBUG = -g$(DEBUG)
-CWARN = -Wall -Wstrict-prototypes
-#CTUNING = -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums
-CTUNING = -ffunction-sections -fdata-sections
-CXXTUNING = -fno-exceptions $(CTUNING)
-#CEXTRA = -Wa,-adhlns=$(<:.c=.lst)
+CSTANDARD := -std=gnu99
+CDEBUG := -g$(DEBUG)
+CXXWARN := -Wall
+CWARN := $(CXXWARN) -Wstrict-prototypes
+#CTUNING := -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums
+CTUNING := -ffunction-sections -fdata-sections
+CXXTUNING := -fno-exceptions $(CTUNING)
+#CEXTRA := -Wa,-adhlns=$(<:.c=.lst)
 
-CFLAGS = $(CDEBUG) $(CDEFS) $(INCLUDE) -O$(OPT) $(CWARN) $(CSTANDARD) \
-	 $(CTUNING) $(CEXTRA)
-CXXFLAGS = $(CDEBUG) $(CXXDEFS) $(INCLUDE) -O$(OPT) $(CWARN) $(CSTANDARD) \
-	   $(CXXTUNING) $(CEXTRA)
+CFLAGS := $(CDEBUG) $(CDEFS) $(INCLUDE) -O$(OPT) $(CWARN) $(CSTANDARD) \
+	  $(CTUNING) $(CEXTRA)
+CXXFLAGS := $(CDEBUG) $(CXXDEFS) $(INCLUDE) -O$(OPT) $(CXXWARN) \
+	    $(CXXTUNING) $(CEXTRA)
 
-#ASFLAGS = -Wa,-adhlns=$(<:.S=.lst),-gstabs 
-LDFLAGS = 
+#ASFLAGS := -Wa,-adhlns=$(<:.S=.lst),-gstabs 
+LDFLAGS := -Wl,--gc-sections
 
 
 # Programming support using avrdude. Settings and variables.
-AVRDUDE_PROGRAMMER = stk500
-AVRDUDE_PORT = $(PORT)
-AVRDUDE_WRITE_FLASH = -U flash:w:applet/$(TARGET).hex
-AVRDUDE_FLAGS = -F -p $(MCU) -P $(AVRDUDE_PORT) -c $(AVRDUDE_PROGRAMMER) \
-  -b $(UPLOAD_RATE) -q -V
+ARDUINO_AVR_BIN := $(ARDUINO)/hardware/tools
+AVRDUDE := $(ARDUINO_AVR_BIN)/avrdude
+#AVRDUDE := avrdude
+AVRDUDE_CONF := $(ARDUINO_AVR_BIN)/avrdude.conf
+AVRDUDE_PROGRAMMER := stk500
+AVRDUDE_PORT := $(PORT)
+AVRDUDE_WRITE_FLASH := -U flash:w:applet/$(TARGET).hex
+AVRDUDE_FLAGS := -F -p $(MCU) -P $(AVRDUDE_PORT) -c $(AVRDUDE_PROGRAMMER) \
+  -b $(UPLOAD_RATE) -q -V -C $(AVRDUDE_CONF)
 
 # Program settings
-ARDUINO_AVR_BIN = $(ARDUINO)/hardware/tools
-CC = avr-gcc 
-CXX = avr-g++
-OBJCOPY = avr-objcopy
-OBJDUMP = avr-objdump
-SIZE = avr-size
-NM = avr-nm
-AVRDUDE = $(ARDUINO_AVR_BIN)/avrdude
-#AVRDUDE = avrdude
-REMOVE = rm -f
-MV = mv -f
+CC := avr-gcc 
+CXX := avr-g++
+OBJCOPY := avr-objcopy
+OBJDUMP := avr-objdump
+SIZE := avr-size
+NM := avr-nm
+REMOVE := rm -f
+MV := mv -f
 
 # Define all object files.
-OBJ = $(SRC:.c=.o) $(CXXSRC:.cpp=.o) $(ASRC:.S=.o)
+OBJ := $(SRC:.c=.o) $(CXXSRC:.cpp=.o) $(ASRC:.S=.o)
 
 # Define all listing files.
-LST = $(ASRC:.S=.lst) $(CXXSRC:.cpp=.lst) $(SRC:.c=.lst)
+LST := $(ASRC:.S=.lst) $(CXXSRC:.cpp=.lst) $(SRC:.c=.lst)
 
 # Combine all necessary flags and optional flags.
 # Add target processor to flags.
-ALL_CFLAGS = -mmcu=$(MCU) -I. $(CFLAGS)
-ALL_CXXFLAGS = -mmcu=$(MCU) -I. $(CXXFLAGS)
-ALL_ASFLAGS = -mmcu=$(MCU) -I. -x assembler-with-cpp $(ASFLAGS)
+ALL_CFLAGS := -mmcu=$(MCU) -I. $(CFLAGS)
+ALL_CXXFLAGS := -mmcu=$(MCU) -I. $(CXXFLAGS)
+ALL_ASFLAGS := -mmcu=$(MCU) -I. -x assembler-with-cpp $(ASFLAGS)
 
 
 # Default target.
@@ -191,11 +186,11 @@ extcoff: applet/$(TARGET).elf
 
 
 # Compile: create object files from C++ source files.
-.cpp.o: $(HEADERS)
+.cpp.o:
 	$(CXX) -c $(ALL_CXXFLAGS) $< -o $@ 
 
 # Compile: create object files from C source files.
-.c.o: $(HEADERS)
+.c.o:
 	$(CC)  -c $(ALL_CFLAGS) $< -o $@ 
 
 
@@ -214,14 +209,17 @@ applet/$(TARGET).cpp: $(TARGET).pde
 	test -d applet || mkdir applet
 	echo '#include "WProgram.h"' > applet/$(TARGET).cpp
 	echo '#include "avr/interrupt.h"' >> applet/$(TARGET).cpp
-	sed -n 's|^\(void .*)\).*|\1;|p' $(TARGET).pde | grep -v 'setup()' | \
+	-sed -n 's|^\(void .*)\).*|\1;|p' $(TARGET).pde | grep -v 'setup()' | \
 		grep -v 'loop()' >> applet/$(TARGET).cpp
 	cat $(TARGET).pde >> applet/$(TARGET).cpp
-	cat $(ARDUINO_SRC)/main.cpp >> applet/$(TARGET).cpp
+	#cat $(ARDUINO_SRC)/main.cpp >> applet/$(TARGET).cpp
+
+applet/$(TARGET).s: applet/$(TARGET).cpp
+	$(CXX) -S $(ALL_CXXFLAGS) applet/$(TARGET).cpp -o applet/$(TARGET).s
 
 # Link: create ELF output file from object files.
 applet/$(TARGET).elf: applet/$(TARGET).cpp $(OBJ)
-	$(CC) $(ALL_CFLAGS) $(OBJ) -lm --output $@ $(LDFLAGS)
+	$(CC) $(ALL_CFLAGS) $(OBJ) $(ARDUINO_LIBRARY) -lm --output $@ $(LDFLAGS)
 #	$(CC) $(ALL_CFLAGS) $(OBJ) $(ARDUINO_TOOLS)/avr/avr/lib/avr5/crtm168.o --output $@ $(LDFLAGS)
 
 pd_close_serial:
@@ -277,7 +275,21 @@ etags_MINGW:
 #	etags -a /usr/include/*.h /usr/include/sys/*.h 
 
 
-path:
-	echo $(PATH)
-	echo $$PATH
+test:
+	@echo '$$(TARGET)'
+	@echo $(TARGET)
+	@echo '$$(SRC)'
+	@echo $(SRC)
+	@echo '$$(CXXSRC)'
+	@echo $(CXXSRC)
+	@echo '$$(ASRC)'
+	@echo $(ASRC)
+	@echo '$$(ARDUINO_LIBS)'
+	@echo $(ARDUINO_LIBS)
+	@echo '$$(ARDUINO_UTILITY_LIBS)'
+	@echo $(ARDUINO_UTILITY_LIBS)
+	@echo '$$(LIBRARY)'
+	@echo $(LIBRARY)
+	@echo '$$(OBJ)'
+	@echo "$(OBJ)"
 
