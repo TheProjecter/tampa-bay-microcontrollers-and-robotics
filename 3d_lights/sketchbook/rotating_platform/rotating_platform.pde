@@ -21,6 +21,12 @@ Pin assignments:
 
 *********************************************************/
 
+/********************************************************
+ This program only uses the Arduino timer functions, micros, millis or
+ delay, in the comm_test and led_test routines.  So it _could_ use timer0
+ for the normal processing (which uses less current), I just haven't made the
+ effort yet to figure out how timer0 works and make the switch...
+*********************************************************/
 
 /********************************************************
 
