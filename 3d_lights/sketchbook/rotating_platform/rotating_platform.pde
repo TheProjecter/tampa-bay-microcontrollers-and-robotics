@@ -108,7 +108,8 @@ void
 pulse_row(byte b1, byte b2) {
   for (byte column = 8; column;) {
     set_column(b1, b2, --column);
-    while (TCNT2 < 55) ;   // wait long enough for intr to turn them off
+    while (TCNT2 > 200) ;   // wait for timer to roll over
+    while (TCNT2 < 55)  ;   // wait long enough for intr to turn them off
   }
 }
 
