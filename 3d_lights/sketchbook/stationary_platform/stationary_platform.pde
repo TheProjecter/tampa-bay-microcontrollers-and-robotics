@@ -83,10 +83,12 @@ setup(void) {
   TCCR2B = 0x02;  // prescaler: timer clk == cpu clk / 8
   ASSR = 0;
   // GTCCR = 2 will reset timer2 prescaler
+
+  noInterrupts();
 }
 
-unsigned int Rotation;         // ticks/rotation (4 uSec/tick)
-unsigned int Slice;            // ticks/slice (4 uSec/tick)
+unsigned int Rotation;         // timer1 ticks/rotation (4 uSec/tick)
+unsigned int Slice;            // timer1 ticks/slice (4 uSec/tick)
 
 byte Buffer[2][800];
 byte Send_buf = 0;           // toggles between 0 and 1
@@ -99,14 +101,16 @@ byte Sync_seen = 0;
 byte Recv_ok = 1;
 
 #define WAIT_SYNC_START         0
-#define WAIT_MIN_START          1
-#define SEND                    2
-#define WAIT_SEND               3
-#define WAIT_MAG                4
-#define WAIT_MAG2               5
+#define WAIT_MIN_BYTES          1
+#define WAIT_MAG                2
+#define WAIT_MAG2               3
+#define SEND                    4
 
 byte State = WAIT_SYNC_START;
 
+// Called from:
+//   * SEND_BIT (send_2_bytes)
+//   * send_frame
 #define RECV_TEST()                         \
   if (Recv_ok && (UCSR0A & (1 << RXC0))) {  \
     byte c = UDR0;                          \
@@ -117,8 +121,8 @@ byte State = WAIT_SYNC_START;
       } else {                              \
         if (c == SYNC_CHAR) {               \
           PORTC = 1;                        \
-          Sync_seen = 1;                    \
           Recv_ok = 0;                      \
+          Sync_seen = 1;                    \
         } else if (c == ESC_CHAR) {         \
           Ignore_next_escape = 1;           \
         } else {                            \
@@ -132,6 +136,8 @@ byte State = WAIT_SYNC_START;
   } /* end if (Recv_ok && byte ready) */
 
 // est 7 cpu cycles, excluding RECV_TEST
+// Called from:
+//   * send_2_bytes
 #define SEND_BIT(n)                     \
   PORTB = bit;                          \
   bit = ~(n | 0xFE);                    \
@@ -139,23 +145,31 @@ byte State = WAIT_SYNC_START;
   PORTB = 0;                            \
   RECV_TEST()
 
+// Called from:
+//   * send_2_bytes
 #define CHECK_SYNC_SEEN()                                          \
   if (Sync_seen) {                                                 \
+    /* PORTC == 1 && Recv_ok == 0 */                               \
     if (Recv_buf == Send_buf) {                                    \
+      /* Switch receive buffer. */                                 \
       Recv_buf ^= 1;                                               \
       Recv_start = Bytep = Buffer[Recv_buf];                       \
       Endp = Bytep + 799;                                          \
       PORTC = 0;                                                   \
       Recv_ok = 1;                                                 \
+      Sync_seen = 0;                                               \
     } else if (Bytep - Recv_start < MIN_BYTES) {                   \
-      Bytep = Recv_start;  /* incomplete results, throw it away */ \
+      /* incomplete results, truncate it */                        \
+      Bytep = Recv_start;                                          \
       PORTC = 0;                                                   \
       Recv_ok = 1;                                                 \
-    } else {                                                       \
-      State = WAIT_SEND;                                           \
+      Sync_seen = 0;                                               \
     }                                                              \
-  }
+  } /* end if (Sync_seen) */
 
+// Called from:
+//   * send_2_bytes
+//   * send_frame
 #define MAG_CHECK(last_statement)                  \
   if (!(PIND & 0x90) && TCNT1 > 5000) {            \
     /* mag & switch closed == sync mode */         \
@@ -166,20 +180,18 @@ byte State = WAIT_SYNC_START;
     Rotation = rotation;                           \
     Send_buf ^= 1;                                 \
     if (Recv_buf == Send_buf) {                    \
+      /* already receiving into new buffer */      \
       if (Bytep - Recv_start < MIN_BYTES) {        \
-        State = WAIT_MAG;                          \
+        State = WAIT_MIN_BYTES;                    \
       }                                            \
     } else {                                       \
-      Recv_buf ^= 1;                               \
+      Recv_buf = Send_buf;                         \
       Recv_start = Bytep = Buffer[Recv_buf];       \
       Endp = Bytep + 799;                          \
-      if (State == WAIT_SEND) {                    \
-        PORTC = 0;                                 \
-        Recv_ok = 1;                               \
-        State = SEND;                              \
-      } else {                                     \
-        State = WAIT_SYNC_START;                   \
-      }                                            \
+      PORTC = 0;                                   \
+      Recv_ok = 1;                                 \
+      Sync_seen = 0;                               \
+      State = WAIT_SYNC_START;                     \
     }                                              \
     last_statement;                                \
   }
@@ -187,6 +199,9 @@ byte State = WAIT_SYNC_START;
 #define WAIT_UNTIL(time)                \
   while (TCNT2 < (time)) 
 
+// Called from:
+//   * send_slice
+//   * send_256
 byte
 send_2_bytes(byte n1, byte n2) {
   // This takes .1 mSec to execute, or the time for 1 column.
@@ -234,12 +249,16 @@ send_2_bytes(byte n1, byte n2) {
   WAIT_UNTIL(18*8+1);
   SEND_BIT(n2);         // bit 7 + stop bit
   // Should have about 25 uSec of idle time here...
-  CHECK_SYNC_SEEN();
-  MAG_CHECK(return 1);
-  WAIT_UNTIL(200);      // includes extra wait time for .1 mSec/column
+  while (TCNT2 < 200) { // includes extra wait time for .1 mSec/column
+    RECV_TEST();
+    CHECK_SYNC_SEEN();
+    MAG_CHECK(return 1);
+  }
   return 0;
 }
 
+// Called from:
+//   * send_frame
 byte
 send_slice(byte *p) {
   // This function takes .8 mSec to run.
@@ -249,6 +268,8 @@ send_slice(byte *p) {
   return 0;
 }
 
+// Called from:
+//   * SEND state
 byte
 send_frame(byte *p) {
   // This sends one complete revolution (800 bytes).
@@ -264,14 +285,14 @@ send_frame(byte *p) {
       if (Send_buf == Recv_buf && Bytep > Endp) {
         PORTC = 0;                 // enable hardware flow control
         Recv_buf ^= 1;
-        Bytep = Buffer[Recv_buf];
+        Recv_start = Bytep = Buffer[Recv_buf];
         Endp = Bytep + 799;
       }
       RECV_TEST();
       MAG_CHECK(return 1);
-    }
+    } // end while (TCNT2 < end_time)
     end_time += Slice;
-  }
+  } // end for (i)
   return 0;
 }
 
@@ -286,11 +307,19 @@ void
 loop(void) {
   switch (State) {
   case WAIT_SYNC_START:
+    // From program start
+    //    and SEND if end of frame and still receiving into Send_buf
+    // Pre-conditions:
+    //    * no SYNC_CHAR seen
+    //    * no received data
+    //    * no MAG seen
+    // Next States:
+    //    * WAIT_MIN_BYTES if SYNC_CHAR seen
     if (UCSR0A & (1 << RXC0)) {
       byte c = UDR0;
       if (Ignore_next_escape) Ignore_next_escape = 0;
       else if (c == ESC_CHAR) Ignore_next_escape = 1;
-      else if (c == SYNC_CHAR) State = WAIT_MIN_START;
+      else if (c == SYNC_CHAR) State = WAIT_MIN_BYTES;
     }
     if (!(PIND & 0x20)) { // push button down
       send_256();
@@ -300,41 +329,42 @@ loop(void) {
       while (TCNT1 < 62500u) ;    // delay 250 mSec
     }
     break;
-  case WAIT_MIN_START:
+  case WAIT_MIN_BYTES:
+    // From WAIT_SYNC_START when SYNC_CHAR seen
+    //    and SEND if end of frame and < MIN_BYTES in next Send_buf
+    // Pre-conditions:
+    //    * SYNC_CHAR seen
+    //    * < MIN_BYTES received data
+    //    * no MAG seen
+    // Next States:
+    //    * WAIT_MAG when MIN_BYTES received
     if (UCSR0A & (1 << RXC0)) {
       byte c = UDR0;
       if (Ignore_next_escape) {
         Ignore_next_escape = 0;
-        if (Bytep <= Endp) *Bytep++ = c;
+        *Bytep++ = c;
       } else if (c == ESC_CHAR) Ignore_next_escape = 1;
       else if (c == SYNC_CHAR) {
-        if (Bytep - Recv_start < MIN_BYTES) {
-          Bytep = Recv_start;  // incomplete, throw away data
-        } else if (Recv_buf == Send_buf) {
-          Recv_buf ^= 1;
-          Bytep = Recv_start = Buffer[Recv_buf];
-        } else {
-          PORTC = 1;
-          Recv_ok = 0;
-          State = WAIT_SEND;
-        }
-      } else if (Bytep <= Endp) *Bytep++ = c;
-    }
-    if ((!(PIND & 0x80) || (PIND & 0x10)) && TCNT1 > 5000) {
-      // mag || switch open == async mode
-      GTCCR = 1; // reset timer0-1 prescaler
-      unsigned int rotation = TCNT1;
-      TCNT1 = 0;
-      Slice = (rotation + 25u) / 50u;
-      Rotation = rotation;
-      State = SEND;
-    }
-    break;
-  case SEND:
-  case WAIT_SEND:
-    send_frame(Buffer[Send_buf]);
+        // incomplete, truncate data and stay in same receive buffer
+        Bytep = Recv_start;
+      } else {
+        *Bytep++ = c;
+      }
+      if (Bytep - Recv_start > MIN_BYTES) {
+        State = WAIT_MAG;
+      }
+    } // end if (byte received)
     break;
   case WAIT_MAG:
+    // From WAIT_MIN_BYTES when MIN_BYTES received.
+    //    and SEND if end of frame and >= MIN_BYTES in next Send_buf
+    // Pre-conditions:
+    //    * SYNC_CHAR seen
+    //    * >= MIN_BYTES received data
+    //    * no MAG seen
+    // Next States:
+    //    * SEND if MAG seen
+    //    * WAIT_MAG2 if both buffers full and SYNC_CHAR seen
     if (UCSR0A & (1 << RXC0)) {
       byte c = UDR0;
       if (Ignore_next_escape) {
@@ -351,22 +381,74 @@ loop(void) {
         } else {
           PORTC = 1;
           Recv_ok = 0;
+          Sync_seen = 1;
           State = WAIT_MAG2;
         }
       } else if (Bytep <= Endp) *Bytep++ = c;
-    }
-    if ((!(PIND & 0x80) || (PIND & 0x10)) && TCNT1 > 5000 && 
-        Bytep - Recv_start > MIN_BYTES
-    ) {
+    } // end if (byte received)
+    if ((!(PIND & 0x80) || (PIND & 0x10)) && TCNT1 > 5000) {
+      // mag pickup || switch in async mode
+      GTCCR = 1;  // reset timer0-1 prescalar
+      if (PIND & 0x10) {
+        // switch in async mode
+        Rotation = 12500;        // 50mSec
+        Slice = 250;             // 1mSec
+        TCNT1 = 0;
+      } else {
+        unsigned int rotation = TCNT1;
+        TCNT1 = 0;
+        Slice = (rotation + 25u) / 50u;
+        Rotation = rotation;
+      }
       State = SEND;
     }
     break;
   case WAIT_MAG2:
+    // From WAIT_MAG when both buffers full and SYNC_CHAR seen.
+    // Pre-conditions:
+    //    * SYNC_CHAR seen (unprocessed)
+    //    * both buffers full
+    //    * no MAG seen
+    // Next States:
+    //    * SEND if MAG seen
     if ((!(PIND & 0x80) || (PIND & 0x10)) && TCNT1 > 5000) {
-      PORTC = 0;
-      Recv_ok = 1;
+      // mag pickup || switch in async mode
+      GTCCR = 1;  // reset timer0-1 prescalar
+      if (PIND & 0x10) {
+        // switch in async mode
+        Rotation = 12500;        // 50mSec
+        Slice = 250;             // 1mSec
+        TCNT1 = 0;
+      } else {
+        unsigned int rotation = TCNT1;
+        TCNT1 = 0;
+        Slice = (rotation + 25u) / 50u;
+        Rotation = rotation;
+      }
       State = SEND;
     }
+    break;
+  case SEND:
+    // From WAIT_MAG or WAIT_MAG2 when mag pickup seen (or async mode)
+    // Pre-conditions:
+    //    * >= MIN_BYTES in Send_buf
+    //    * MAG seen
+    // Next States (both from MAG_CHECK):
+    //    * WAIT_SYNC_START if end of frame and still receiving into Send_buf
+    //    * WAIT_MIN_BYTES if end of frame and < MIN_BYTES in next Send_buf
+    //    * WAIT_MAG if end of frame and >= MIN_BYTES in next Send_buf
+    if (!send_frame(Buffer[Send_buf])) {
+      Send_buf ^= 1;
+      if (Recv_buf != Send_buf) {
+        // hosed!  We've finished sending the buffer before it's been received!
+        Recv_buf = Send_buf;
+        Bytep = Recv_start = Buffer[Recv_buf];
+        Endp = Bytep + 799;
+        State = WAIT_SYNC_START;
+      } else if (Bytep - Recv_start < MIN_BYTES) {
+        State = WAIT_MIN_BYTES;
+      } else State = WAIT_MAG;
+    } // end if (!senf_frame(...))
     break;
   } // end switch (State)
 }
