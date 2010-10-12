@@ -9,12 +9,17 @@ import sys
 import thread
 import threading
 import traceback
-import comm
-import commands
+from pyterm import comm, commands
 
 B57600 = comm.B57600
 B500000 = comm.B500000
 B1000000 = comm.B1000000
+
+Baud_rates = {
+    "57600": B57600,
+    "500000": B500000,
+    "1000000": B1000000,
+}
 
 class terminal(object):
     thread = None
@@ -106,6 +111,11 @@ class terminal(object):
                 sys.stderr.write("You should not see this!\n")
 
 class usb(terminal):
+    r'''Reads and writes to USB (Arduino).
+
+    This is run in the main thread; so the main thread waits on output from
+    the Arduino.
+    '''
     close_on_eof = False
     read_len = None
     def __init__(self, devnum = 0, timeout = 0, baud = B57600):
@@ -135,6 +145,11 @@ class usb(terminal):
         os.close(self.fd)
 
 class linux_terminal(terminal):
+    r'''Reads and writes to the Linux terminal.
+
+    This is run in its own thread; so its own thread waits on input from the
+    Linux terminal.
+    '''
     close_on_eof = True
     read_len = 1
     name = "linux_terminal"
@@ -173,6 +188,10 @@ class shell(terminal):
         self.commands = commands
 
     def write(self, s):
+        r'''This is run in the Linux terminal thread.
+
+        Commands are run in the Linux terminal thread too.
+        '''
         if s[0] != '!': self.arduino.write(s)
         else:
             if '>' in s:
@@ -200,12 +219,15 @@ class shell(terminal):
                 self.commands[args[0]](out, close, self.arduino, *args[1:])
                 #sys.stderr.write("%s: command returned\n" % self.name)
 
-def start(devnum = 0, timeout = 0, baud = B57600):
+def start(devnum = 0, timeout = 0, baud = B57600, commands = None):
     with usb(devnum, timeout, baud) as arduino:
         with linux_terminal() as linux:
             arduino.push_consumer(linux)
             #sys.stderr.write("did arduino.push_consumer(linux)\n")
-            sh = shell(linux, arduino, **commands.Commands)
+            if commands is None:
+                sh = shell(linux, arduino)
+            else:
+                sh = shell(linux, arduino, **commands.Commands)
             #sys.stderr.write("created shell\n")
             linux.push_consumer(sh)
             #sys.stderr.write("did linux.push_consumer(sh)\n")
@@ -214,5 +236,27 @@ def start(devnum = 0, timeout = 0, baud = B57600):
             arduino.start()
             #sys.stderr.write("aterm.start done\n")
 
+def import_module(module_path):
+    module = __import__(module_path)
+    for name in module_path.split('.')[1:]:
+        module = getattr(module, name)
+    return module
+
 if __name__ == "__main__":
-    start()
+    from optparse import OptionParser
+    parser = OptionParser()
+    parser.add_option("-d", "--devnum", type="int", default=0,
+                      help="device number (what comes after /dev/ttyUCB)")
+    parser.add_option("-t", "--timeout", type="int", default=0,
+                      metavar="DECISEC",
+                      help="timeout for USB read")
+    parser.add_option("-b", "--baud", default="57600", metavar="BAUDRATE",
+                      choices=("57600", "500000", "1000000"),
+                      help="choices: 57600 (default), 500000, 1000000")
+    parser.add_option("-c", "--commands", metavar="PYTHON.MODULE",
+                      help="Python commands module")
+
+    options, args = parser.parse_args()
+
+    start(options.devnum, options.timeout, Baud_rates[options.baud],
+          options.commands and import_module(options.commands))

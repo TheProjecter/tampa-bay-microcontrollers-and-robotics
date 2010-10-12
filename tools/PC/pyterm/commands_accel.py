@@ -1,54 +1,13 @@
-# commands.py
+# commands_accel.py
 
 from __future__ import division
 import sys
 import time
 
+from pyterm import commands
+
 Inches_per_sec2_for_1g = 385.28
 G = 50  # for testing
-
-def signed(char):
-    r'''
-        >>> signed(0x00)
-        0
-        >>> signed(0x01)
-        1
-        >>> signed(0x7F)
-        127
-        >>> signed(0xFF)
-        -1
-        >>> signed(0x80)
-        -128
-        >>> signed('\x00')
-        0
-        >>> signed('\x01')
-        1
-        >>> signed('\x7F')
-        127
-        >>> signed('\xFF')
-        -1
-        >>> signed('\x80')
-        -128
-    '''
-    ans = ord(char) if isinstance(char, str) else char
-    if ans < 128: return ans
-    return ans - 256
-
-def unsigned(signed):
-    r'''
-        >>> unsigned(0)
-        0
-        >>> unsigned(1)
-        1
-        >>> unsigned(127)
-        127
-        >>> unsigned(-1)
-        255
-        >>> unsigned(-128)
-        128
-        '''
-    if signed >= 0: return signed
-    return 256 + signed
 
 def in_per_sec2(reading):
     r'''
@@ -94,71 +53,16 @@ def avg(histogram):
     total_count = sum = 0
     for i, count in enumerate(histogram):
         total_count += count
-        sum += signed(i) * count
+        sum += commands.signed(i) * count
     return sum / total_count
 
-def command(desc):
-    r''' Function decorator for command functions.
-
-    Argument is description to come up in help listing, with command name
-    substituted for %(name)s in string.
-    '''
-    def fn_dec(fn):
-        global Commands
-        fn.description = desc
-        Commands[fn.__name__] = surrogate
-        return fn
-    return fn_dec
-
-class streamers(object):
+class streamers(commands.reader):
     read_len = 6
     arduino_command = 's'
     description = "%(name)s num_samples"
     def __init__(self, output, close_output, arduino, num_samples):
-        self.output = output
-        self.arduino = arduino
+        super(streamers, self).__init__(output, close_output, arduino)
         self.num_samples = int(num_samples)
-        self.close_output = close_output
-        self.samples_seen = 0
-        self.buffer = ''
-        self.producer = None
-        try:
-            arduino.push_consumer(self)
-            arduino.write("%s%d\n" % (self.arduino_command, self.num_samples))
-            self.do_init()
-        except Exception, e:
-            #sys.stderr.write("streamers.__init__: caught %r exception\n" % e)
-            if self.close_output: self.output.close()
-            raise
-    def listening_to(self, producer):
-        assert self.producer is None
-        self.producer = producer
-    def not_listening_to(self, producer):
-        assert self.producer == producer
-        self.producer = None
-    def do_init(self): pass
-    def write(self, s):
-        try:
-            buf = self.buffer + s
-            while len(buf) >= self.read_len:
-                self.samples_seen += 1
-                done = self.process(*(ord(x) for x in buf[:self.read_len]))
-                buf = buf[self.read_len:]
-                if done or self.samples_seen >= self.num_samples:
-                    self.arduino.pop_consumer(self)
-                    if buf:
-                        self.output.write("Excess samples returned\n")
-                    self.wrapup()
-                    if self.close_output:
-                        #sys.stderr.write("closing %s\n" % self.output.name)
-                        self.output.close()
-                    return
-            self.buffer = buf
-        except Exception, e:
-            #sys.stderr.write("streamers.write: caught %r exception\n" % e)
-            if self.close_output: self.output.close()
-            raise
-    def wrapup(self): pass
 
 class histogram(streamers):
     def do_init(self):
@@ -173,7 +77,7 @@ class histogram(streamers):
             self.output.write(name + ":\n")
             for i, count in enumerate(readings):
                 if count:
-                    self.output.write("  %d: %d\n" % (signed(i), count))
+                    self.output.write("  %d: %d\n" % (commands.signed(i), count))
         self.output.write("%d: overruns\n" % self.num_overruns)
 
 class calibrate(histogram):
@@ -222,7 +126,7 @@ class track(timestamps):
             a = []
             adj = []
             for i, reading in enumerate(self.last_readings):
-                a_n = in_per_sec2(signed(reading) - Offsets[i])
+                a_n = in_per_sec2(commands.signed(reading) - Offsets[i])
                 a.append(a_n)
                 adj_n = -self.max_adj if self.v[i] >= 0 else self.max_adj
                 if abs(adj_n) * dt > abs(self.v[i]): adj_n = -self.v[i] / dt
@@ -252,7 +156,7 @@ class echo(timestamps):
         self.output.write("%f(%f)ms: 0x%x " % (time, delta, status))
         sep = '('
         for i, reading in enumerate(readings):
-            self.output.write("%s%d" % (sep, signed(reading) - Offsets[i]))
+            self.output.write("%s%d" % (sep, commands.signed(reading) - Offsets[i]))
             sep = ', '
         self.output.write(")\n")
 
@@ -278,15 +182,6 @@ class timings(streamers):
         self.output.write("%f(%f)ms: %s 0x%x\n" %
                            (time * 4e-3, delta * 4e-3, bool(int1), status))
         return False
-
-class help(object):
-    description = "%(name)s"
-    def __init__(self, output, close_output, arduino):
-        output.write("Python commands:\n")
-        for command_name in sorted(Commands.iterkeys()):
-            cmd = Commands[command_name]
-            output.write('  ' + cmd.description % {'name': cmd.__name__} + '\n')
-        if close_output: output.close()
 
 class audio(object):
     pulse_freq = 1/350
@@ -356,14 +251,7 @@ Commands = {
     'timings': timings,
     'echo': echo,
     'echo_track': echo_track,
-    'help': help,
+    'help': commands.help,
     'audio': audio,
 }
-
-def test():
-    import doctest
-    doctest.testmod()
-
-if __name__ == "__main__":
-    test()
 
