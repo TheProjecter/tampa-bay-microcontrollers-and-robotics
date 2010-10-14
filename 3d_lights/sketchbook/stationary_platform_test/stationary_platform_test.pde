@@ -1,8 +1,5 @@
 // stationary_platform_test.pde
 
-// Line number of line following #line
-#line 5 "stationary_platform_test.pde"
-
 // These are grouped on the same port (PIND) so they can be sampled together:
 #define SLIDE_SWITCH_PIN        4       /* 0x10 */
 #define PUSH_BUTTON_PIN         5       /* 0x20 */

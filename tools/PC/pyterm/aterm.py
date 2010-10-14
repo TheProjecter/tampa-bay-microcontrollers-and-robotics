@@ -9,7 +9,8 @@ import sys
 import thread
 import threading
 import traceback
-from pyterm import comm, commands
+
+from pyterm import comm
 
 B57600 = comm.B57600
 B500000 = comm.B500000
@@ -97,9 +98,8 @@ class terminal(object):
                 #sys.stderr.write("%s: did write\n" % (self.name,))
         except Exception, e:
             #sys.stderr.write("%s: run caught %r\n" % (self.name, e))
-            if self.thread:
-                traceback.print_exc()
-            else:
+            traceback.print_exc()
+            if not self.thread:
                 raise
         finally:
             #sys.stderr.write("%s done, %d destinations, closed %r\n" %
@@ -107,7 +107,7 @@ class terminal(object):
             self.close()
             if self.thread is not None:
                 #sys.stderr.write("exiting thread %s\n" % self.name)
-                thread.exit()
+                self.thread.exit()
                 sys.stderr.write("You should not see this!\n")
 
 class usb(terminal):
@@ -118,13 +118,15 @@ class usb(terminal):
     '''
     close_on_eof = False
     read_len = None
-    def __init__(self, devnum = 0, timeout = 0, baud = B57600):
+    def __init__(self, devnum = 0, timeout = 0, baud = B57600, crtscts = False,
+                 format_strings = None):
         super(usb, self).__init__()
         if baud is None:
-            self.fd = comm.open(devnum, timeout)
+            self.fd = comm.open(devnum, timeout, crtscts=crtscts)
         else:
-            self.fd = comm.open(devnum, timeout, baud = baud)
+            self.fd = comm.open(devnum, timeout, baud = baud, crtscts=crtscts)
         self.name = "usb%d" % devnum
+        self.format_strings = format_strings
 
     def do_start(self):
         try:
@@ -133,8 +135,19 @@ class usb(terminal):
             #sys.stderr.write("%s: caught KeyboardInterrupt\n" % self.name)
             pass
 
-    def read(self, n):
-        return os.read(self.fd, n)
+    def read(self, n=1):
+        data = os.read(self.fd, n)
+        if len(data) > 0 and self.format_strings:
+            key = ord(data[0])
+            fs = self.format_strings[key]
+            while fs.size > len(data) - 1:
+                data += os.read(self.fd, fs.size - (len(data) - 1))
+            assert len(data) - 1 == fs.size, \
+                   "key %d: expected len %d, got %d" % \
+                     (key, fs.size, len(data) - 1)
+            return fs.format(data[1:])
+        else:
+            return data
 
     def write(self, s):
         while s:
@@ -219,15 +232,62 @@ class shell(terminal):
                 self.commands[args[0]](out, close, self.arduino, *args[1:])
                 #sys.stderr.write("%s: command returned\n" % self.name)
 
-def start(devnum = 0, timeout = 0, baud = B57600, commands = None):
-    with usb(devnum, timeout, baud) as arduino:
+class format_string(object):
+    r'''This is a format string for output from the Arduino.
+
+    The args are tuples of type and length, where type is either "signed" or
+    "unsigned".
+
+        >>> fs = format_string("hi mom\n")
+        >>> fs.size
+        0
+        >>> fs.format('')
+        'hi mom\n'
+        >>> fs = format_string("s1=%d, s2=%d, s4=%d, u1=%d, u2=%d, u4=%d\n",
+        ...                    ('signed', 1),
+        ...                    ('signed', 2),
+        ...                    ('signed', 4),
+        ...                    ('unsigned', 1),
+        ...                    ('unsigned', 2),
+        ...                    ('unsigned', 4))
+        >>> fs.size
+        14
+        >>> fs.format('\xff\x12\x34\xff\xff\xff\xfe\xff\x12\x34\xff\xff\xff\xfe')
+        's1=-1, s2=4660, s4=-2, u1=255, u2=4660, u4=4294967294\n'
+    '''
+    def __init__(self, format_str, *args):
+        r'''args are ('signed'|'unsigned', length)
+        '''
+        self.format_str = format_str
+        self.args = args
+        self.size = sum(arg[1] for arg in args)
+
+    def format(self, data):
+        data_start = 0
+        args = []
+        for type, length in self.args:
+            num = ord(data[data_start])
+            if type == 'signed':
+                if num & 0x80: num -= 256
+            for byte in data[data_start + 1:data_start + length]:
+                num = (num << 8) | ord(byte)
+            args.append(num)
+            data_start += length
+        return self.format_str % self.fix_args(args)
+
+    def fix_args(self, args):
+        return tuple(args)
+
+def start(devnum = 0, timeout = 0, baud = B57600, crtscts = False,
+          commands = None, format_strings = None):
+    with usb(devnum, timeout, baud, crtscts, format_strings) as arduino:
         with linux_terminal() as linux:
             arduino.push_consumer(linux)
             #sys.stderr.write("did arduino.push_consumer(linux)\n")
             if commands is None:
                 sh = shell(linux, arduino)
             else:
-                sh = shell(linux, arduino, **commands.Commands)
+                sh = shell(linux, arduino, **commands)
             #sys.stderr.write("created shell\n")
             linux.push_consumer(sh)
             #sys.stderr.write("did linux.push_consumer(sh)\n")
@@ -242,21 +302,54 @@ def import_module(module_path):
         module = getattr(module, name)
     return module
 
-if __name__ == "__main__":
+def run(timeout = None, baud = None, crtscts = None, commands = None,
+        format_strings = None, usage = None):
     from optparse import OptionParser
     parser = OptionParser()
+    if usage is not None:
+        parser.set_usage(usage)
     parser.add_option("-d", "--devnum", type="int", default=0,
                       help="device number (what comes after /dev/ttyUCB)")
-    parser.add_option("-t", "--timeout", type="int", default=0,
-                      metavar="DECISEC",
-                      help="timeout for USB read")
-    parser.add_option("-b", "--baud", default="57600", metavar="BAUDRATE",
-                      choices=("57600", "500000", "1000000"),
-                      help="choices: 57600 (default), 500000, 1000000")
-    parser.add_option("-c", "--commands", metavar="PYTHON.MODULE",
-                      help="Python commands module")
+    if timeout is None:
+        parser.add_option("-t", "--timeout", type="int", default=0,
+                          metavar="DECISEC",
+                          help="timeout for USB read")
+    if baud is None:
+        parser.add_option("-b", "--baud", default="57600", metavar="BAUDRATE",
+                          choices=("57600", "500000", "1000000"),
+                          help="choices: 57600 (default), 500000, 1000000")
+    if crtscts is None:
+        parser.add_option("-f", "--flow-control", dest="crtscts",
+                          action="store_true", default=False,
+                          help="Enable hardware flow control (CTS)")
+
+    if commands is None:
+        parser.add_option("-c", "--commands", metavar="PYTHON.MODULE",
+                          callback=get_commands,
+                          help="Python commands module")
 
     options, args = parser.parse_args()
+    if timeout is not None: options.timeout = timeout
+    if baud is not None: options.baud = str(baud)
+    if crtscts is not None: options.crtscts = crtscts
+    if commands is not None: options.commands = commands, format_strings
 
     start(options.devnum, options.timeout, Baud_rates[options.baud],
-          options.commands and import_module(options.commands))
+          options.crtscts, options.commands[0], options.commands[1])
+
+def get_commands(option, opt, module_path, parser):
+    try:
+        module = import_module(module_path)
+    except (ImportError, AttributeError):
+        raise optparser.OptionValueError("Python module %r not found" %
+                                           (module_path,))
+    try:
+        return module.Commands, module.Format_strings
+    except AttributeError:
+        raise optparser.OptionValueError(
+                "Python module %r does not have 'Commands' attribute" %
+                  (module_path,))
+
+if __name__ == "__main__":
+    run()
+

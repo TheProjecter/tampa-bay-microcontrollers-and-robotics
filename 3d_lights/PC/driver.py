@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 # driver.py
 
 import os
@@ -72,3 +74,34 @@ Commands = {
     "show_forever": show_forever,
     "help": commands.help,
 }
+
+# Needed by help command...
+commands.Commands = Commands
+
+class format_rps(aterm.format_string):
+    def fix_args(self, args):
+        r'''args[0] is timer1 ticks/rev @ 4uSec/tick.
+        '''
+        return (250000.0/args[0], args[0]/250.0)
+
+Format_strings = {
+    1: aterm.format_string("stationary_platform: %x, %x\n",
+                           ('unsigned', 1),
+                           ('unsigned', 2)),
+    2: aterm.format_string(
+         "Incomplete_bufs=%d@%d, FE=%d@%d, DOR=%d@%d, Buf_overflows=%d@%d\n",
+                           ('unsigned', 1),
+                           ('unsigned', 1),
+                           ('unsigned', 1),
+                           ('unsigned', 1),
+                           ('unsigned', 1),
+                           ('unsigned', 1),
+                           ('unsigned', 2),
+                           ('unsigned', 1)),
+    3: format_rps("RPS=%.1f, mSec/rev=%.1f\n", ('unsigned', 2)),
+}
+
+if __name__ == "__main__":
+    aterm.run(baud = '500000', timeout = 0, crtscts = True,
+              commands = Commands, format_strings = Format_strings)
+

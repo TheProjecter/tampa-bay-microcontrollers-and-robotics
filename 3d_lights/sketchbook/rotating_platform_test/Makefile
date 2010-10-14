@@ -211,8 +211,9 @@ applet/$(TARGET).cpp: $(TARGET).pde
 	echo '#include "avr/interrupt.h"' >> applet/$(TARGET).cpp
 	-sed -n 's|^\(void .*)\).*|\1;|p' $(TARGET).pde | grep -v 'setup()' | \
 		grep -v 'loop()' >> applet/$(TARGET).cpp
+	echo >> applet/$(TARGET).cpp 
+	echo "#line 1 \"$(TARGET).pde\"" >> applet/$(TARGET).cpp 
 	cat $(TARGET).pde >> applet/$(TARGET).cpp
-	#cat $(ARDUINO_SRC)/main.cpp >> applet/$(TARGET).cpp
 
 applet/$(TARGET).s: applet/$(TARGET).cpp
 	$(CXX) -S $(ALL_CXXFLAGS) applet/$(TARGET).cpp -o applet/$(TARGET).s
