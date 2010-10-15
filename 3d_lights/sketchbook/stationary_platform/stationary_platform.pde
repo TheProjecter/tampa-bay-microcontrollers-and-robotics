@@ -220,10 +220,36 @@ print_rps(unsigned int rotation) {
 
 // Called from:
 //   * SEND_BIT (send_2_bytes)
+//   * send_2_bytes
 //   * send_frame
+// This has a max of 54 clock cycles to run in!
 #define RECV_TEST(flags)                      \
   if (Recv_ok && (flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0))))) {    \
     byte c = UDR0;                            \
+    if (!Ignore_next_escape) {                 \
+      if (c == SYNC_CHAR) {                   \
+        PORTC = 1;                            \
+        Recv_ok = 0;                          \
+        Sync_seen = 1;                        \
+      } else if (c != ESC_CHAR) {             \
+        if (Bytep <= Endp) *Bytep++ = c;      \
+        else {                                \
+          Buf_overflows += 1;                 \
+          Where_overflow = WHERE_RECV_TEST2;  \
+        }                                     \
+      } else {                                \
+        Ignore_next_escape = 1;               \
+      }                                       \
+    } else {                                  \
+      Ignore_next_escape = 0;                 \
+      if (Bytep <= Endp) *Bytep++ = c;        \
+      else {                                  \
+        Buf_overflows += 1;                   \
+        Where_overflow = WHERE_RECV_TEST1;    \
+      }                                       \
+    } /* end else if (Ignore_next_escape) */  \
+  } else { /* no byte received */             \
+    /* process flags from last call */        \
     if (flags & (1 << FE0)) {                 \
       Framing_errors += 1;                    \
       Where_framing_error = WHERE_RECV_TEST1; \
@@ -232,31 +258,10 @@ print_rps(unsigned int rotation) {
       Data_overrun_errors += 1;               \
       Where_data_overrun = WHERE_RECV_TEST1;  \
     }                                         \
-    if (Ignore_next_escape) {                 \
-      Ignore_next_escape = 0;                 \
-      if (Bytep <= Endp) *Bytep++ = c;        \
-      else {                                  \
-        Buf_overflows += 1;                   \
-        Where_overflow = WHERE_RECV_TEST1;    \
-      }                                       \
-    } else {                                  \
-      if (c == SYNC_CHAR) {                   \
-        PORTC = 1;                            \
-        Recv_ok = 0;                          \
-        Sync_seen = 1;                        \
-      } else if (c == ESC_CHAR) {             \
-        Ignore_next_escape = 1;               \
-      } else {                                \
-        if (Bytep <= Endp) *Bytep++ = c;      \
-        else {                                \
-          Buf_overflows += 1;                 \
-          Where_overflow = WHERE_RECV_TEST2;  \
-        }                                     \
-      }                                       \
-    } /* end else if (Ignore_next_escape) */  \
-  } /* end if (Recv_ok && byte ready) */
+    flags = 0;                                \
+  } /* end else if (Recv_ok && byte ready) */
 
-// est 7 cpu cycles, excluding RECV_TEST
+// 6 cpu cycles, excluding RECV_TEST
 // Called from:
 //   * send_2_bytes
 #define SEND_BIT(n)                     \
@@ -264,7 +269,7 @@ print_rps(unsigned int rotation) {
   bit = ~(n | 0xFE);                    \
   n >>= 1;                              \
   PORTB = 0;                            \
-  RECV_TEST(flags)
+  RECV_TEST(flags1)
 
 // Called from:
 //   * send_2_bytes
@@ -272,7 +277,7 @@ print_rps(unsigned int rotation) {
 #define CHECK_SYNC_SEEN(flags)                                     \
   if (Sync_seen) {                                                 \
     /* PORTC == 1 && Recv_ok == 0 */                               \
-    if (flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0)))) {  \
+    if ((flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0))))) {  \
       byte c = UDR0;                                               \
       if (flags & (1 << FE0)) {                                    \
         Framing_errors += 1;                                       \
@@ -358,6 +363,7 @@ print_rps(unsigned int rotation) {
     last_statement;                                     \
   }
 
+// 4 clock cycles min
 #define WAIT_UNTIL(time)                \
   while (TCNT2 < (time)) 
 
@@ -368,7 +374,7 @@ byte
 send_2_bytes(byte n1, byte n2) {
   // This takes .1 mSec to execute, or the time for 1 column.
   byte bit = 0x01;
-  byte flags;
+  byte flags1 = 0, flags2;
   GTCCR = 2;            // reset timer2 prescalar
   TCNT2 = 0;            // reset timer2 counter
 
@@ -389,32 +395,35 @@ send_2_bytes(byte n1, byte n2) {
   SEND_BIT(n1);         // bit 6
   WAIT_UNTIL(8*8+1);
   SEND_BIT(n1);         // bit 7 + stop bit
-  CHECK_SYNC_SEEN(flags);
+  CHECK_SYNC_SEEN(flags2);
   MAG_CHECK(return 1);
   bit = 0x01;           // next start bit
   WAIT_UNTIL(10*8);
 
+  // just in case the CHECK_SYNC_SEEN and MAG_CHECK took too long...
+  byte start2_time = TCNT2 + 1;
+
   SEND_BIT(n2);         // start bit
-  WAIT_UNTIL(11*8+1);
+  WAIT_UNTIL(start2_time + 8);
   SEND_BIT(n2);         // bit 0
-  WAIT_UNTIL(12*8+1);
+  WAIT_UNTIL(start2_time + 2*8);
   SEND_BIT(n2);         // bit 1
-  WAIT_UNTIL(13*8+1);
+  WAIT_UNTIL(start2_time + 3*8);
   SEND_BIT(n2);         // bit 2
-  WAIT_UNTIL(14*8+1);
+  WAIT_UNTIL(start2_time + 4*8);
   SEND_BIT(n2);         // bit 3
-  WAIT_UNTIL(15*8+1);
+  WAIT_UNTIL(start2_time + 5*8);
   SEND_BIT(n2);         // bit 4
-  WAIT_UNTIL(16*8+1);
+  WAIT_UNTIL(start2_time + 6*8);
   SEND_BIT(n2);         // bit 5
-  WAIT_UNTIL(17*8+1);
+  WAIT_UNTIL(start2_time + 7*8);
   SEND_BIT(n2);         // bit 6
-  WAIT_UNTIL(18*8+1);
+  WAIT_UNTIL(start2_time + 8*8);
   SEND_BIT(n2);         // bit 7 + stop bit
   // Should have about 25 uSec of idle time here...
   while (TCNT2 < 200) { // includes extra wait time for .1 mSec/column
-    RECV_TEST(flags);
-    CHECK_SYNC_SEEN(flags);
+    RECV_TEST(flags1);
+    CHECK_SYNC_SEEN(flags2);
     MAG_CHECK(return 1);
   }
   return 0;
@@ -443,8 +452,9 @@ send_frame(byte *p) {
     if (send_slice(p + i)) return 1;
     // There should be at least .2 mSec of idle time here:
     while (TCNT1 < end_time) {
-      byte flags;
+      byte flags = 0;
       RECV_TEST(flags);
+      RECV_TEST(flags); // to record flags from prev RECV_TEST
       CHECK_SYNC_SEEN(flags);
       MAG_CHECK(return 1);
     } // end while (TCNT2 < end_time)
@@ -473,7 +483,7 @@ loop(void) {
     //    * no MAG seen
     // Next States:
     //    * WAIT_MIN_BYTES if SYNC_CHAR seen
-    if (flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0)))) {
+    if ((flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0))))) {
       byte c = UDR0;
       if (flags & (1 << FE0)) {
         Framing_errors += 1;
@@ -511,7 +521,7 @@ loop(void) {
     //    * no MAG seen
     // Next States:
     //    * WAIT_MAG when MIN_BYTES received
-    if (flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0)))) {
+    if ((flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0))))) {
       byte c = UDR0;
       if (flags & (1 << FE0)) {
         Framing_errors += 1;
@@ -555,7 +565,7 @@ loop(void) {
     // Next States:
     //    * SEND if MAG seen
     //    * WAIT_MAG2 if both buffers full and SYNC_CHAR seen
-    if (flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0)))) {
+    if ((flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0))))) {
       byte c = UDR0;
       if (flags & (1 << FE0)) {
         Framing_errors += 1;
@@ -621,7 +631,7 @@ loop(void) {
     // Next States:
     //    * SEND if MAG seen
 
-    if (flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0)))) {
+    if ((flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0))))) {
       byte c = UDR0;
       if (flags & (1 << FE0)) {
         Framing_errors += 1;

@@ -163,6 +163,95 @@ comm_test(void) {
   wait_until(53); // wait for lights to turn off before reseting TCNT2 again...
 }
 
+unsigned int Framing_errors[2] = {0, 0};
+unsigned int Overrun_errors = 0;
+unsigned int Wrong_data_errors = 0;
+unsigned int Min_time_errors[2] = {0, 0};
+unsigned int Max_time_errors[2] = {0, 0};
+
+void
+report_int(unsigned int n, byte column) {
+  set_column(byte(n), 0xC0 | byte(n >> 8), column);
+  wait_until(53); // wait for lights to turn off before reseting TCNT2 again...
+}
+
+void
+report_comm2_test(void) {
+  // display until reset...
+  for (;;) {
+    // each report_int resets TCNT2 to 255
+    report_int(Framing_errors[0],  7);
+    report_int(Framing_errors[1],  6);
+    report_int(Overrun_errors,     5);
+    report_int(Min_time_errors[0], 4);
+    report_int(Min_time_errors[1], 3);
+    report_int(Max_time_errors[0], 2);
+    report_int(Max_time_errors[1], 1);
+    report_int(Wrong_data_errors,  0);
+    wait_until(129); // 1mSec from start of report == TCNT2 of 500
+                     // 500 - 53 * 7 == 129
+  } // end for (;;)
+}
+
+void
+check_byte(byte expected, byte index, byte max_time) {
+  byte flags;
+  while (!(flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0))))) {
+    if (TCNT2 > max_time) return;
+  }
+  if (flags & (1 << FE0)) Framing_errors[index] += 1;
+  if (flags & (1 << DOR0)) Overrun_errors += 1;
+  if (UDR0 != expected) Wrong_data_errors += 1;
+}
+
+byte
+check_byte_timed(byte expected, byte index,
+                 byte min_time, byte max_time, byte time_index
+) {
+  check_byte(expected, index, max_time);
+  byte time = TCNT2;
+  if (time < min_time) Min_time_errors[time_index] += 1;
+  if (time > max_time) Max_time_errors[time_index] += 1;
+  return time;
+}
+
+byte
+comm2_test_slice(byte first, byte skip_first) {
+  // wait for the show to start...
+  if (!skip_first) {
+    if (first) check_byte_timed(0x01, 0, 0, 255, 0);      // 0-inf
+    else       check_byte_timed(0x01, 0, 90, 125, 0);     // 180-250 uSec
+  }
+  GTCCR = 2;     // reset prescalar for timer2
+  TCNT2 = 0;     // timer2 ticks at 2uSec/tick
+  byte time1 = 0;
+  byte time2 = check_byte_timed(0x80, 1, 0, time1 + 30, 1);
+  if (time2 > time1 + 90) return 1;
+  for (byte i = 1; i < 8; i++) {
+    // 96-110 uSec from last column
+    time1 = check_byte_timed(0x01 << i, 0, time1 + 48, time1 + 55, 0);
+    if (time1 > time2 + 90) return 1;
+    // 0-60 uSec from start of column
+    time2 = check_byte_timed(0x80 >> i, 1, 0, time1 + 30, 1);
+    if (time2 > time1 + 90) return 1;
+  } // end for (i)
+  return 0;
+}
+
+void
+comm2_test(void) {
+  byte first = 1;
+  byte skip_first = 0;
+  // wait for the show to start...
+  for (byte frame = 0; frame < 3; frame++) {
+    for (byte slice = 0; slice < 50; slice++) {
+      skip_first = comm2_test_slice(first, skip_first);
+      first = 0;
+    }
+  }
+  report_comm2_test();
+}
+
 void
 setup(void) {
   // turn off pull-ups, set output ports LOW
@@ -203,8 +292,13 @@ setup(void) {
   PORTC = 0;      // all outputs LOW
   DDRC = 0x3F;    // 6 output pins (0-5 out)
 
+  if (!comm_button) {
+    // this branch never finishes
+    if (led_button) {
+      for (;;) comm_test();
+    } else comm2_test();  // never returns
+  }
   if (!led_button) for (;;) led_test();
-  if (!comm_button) for (;;) comm_test();
   Column = 7;
   interrupts();
 }
