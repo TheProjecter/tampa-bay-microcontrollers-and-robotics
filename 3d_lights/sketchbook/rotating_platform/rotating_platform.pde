@@ -22,10 +22,10 @@ Pin assignments:
 *********************************************************/
 
 /********************************************************
- This program only uses the Arduino timer functions, micros, millis or
- delay, in the comm_test and led_test routines.  So it _could_ use timer0
- for the normal processing (which uses less current), I just haven't made the
- effort yet to figure out how timer0 works and make the switch...
+ This program does not use the Arduino timer functions (micros, millis or
+ delay).  So it _could_ use timer0 for the normal processing (which uses less
+ current), I just haven't made the effort yet to figure out how timer0 works
+ and make the switch...
 *********************************************************/
 
 /********************************************************
@@ -84,7 +84,7 @@ set_column(byte b1, byte b2, byte column) {
   PORTD = d;
   GTCCR = 2;     // reset prescalar for timer2
   TCNT2 = 255;   // set timer2 value to 0xFF
-  TIFR2 = 6;     // reset OCF2A and OCF2B match flags
+  TIFR2 = 6;     // reset OCF2A (2) and OCF2B (4) match flags
   TIMSK2 = 0x06; // enable compare match OCR2A and OCR2B interrupt
 }
 
@@ -105,57 +105,62 @@ ISR(TIMER2_COMPB_vect) {
 }
 
 void
+wait_until(byte stop_time) {
+  while (TCNT2 >= 250) ;         // wait for timer to roll over
+  while (TCNT2 < stop_time) ;    // wait for stop_time
+}
+
+void
+wait_millis(int millis) {
+  for (int i = 0; i < millis; i++) {
+    wait_until(250);
+    wait_until(250);
+  }
+}
+
+void
 pulse_row(byte b1, byte b2) {
   for (byte column = 8; column;) {
     set_column(b1, b2, --column);
-    while (TCNT2 > 200) ;   // wait for timer to roll over
-    while (TCNT2 < 55)  ;   // wait long enough for intr to turn them off
+    wait_until(55);         // wait long enough for intr to turn them off
   }
 }
 
 void
 led_test(void) {
-  byte b1, b2, column;
-  for (;;) {
-    // test columns:
-    for (column = 8; column;) {
-      delay(250);
-      set_column(0xff, 0xff, --column);
-    }
+  byte column;
+  // test columns:
+  for (column = 8; column;) {
+    set_column(0xff, 0xff, --column);
+    wait_millis(250);
+  }
 
-    // test rows:
-    b2 = 0;
-    for (b1 = 1; b1; b1 <<= 1) {
-      delay(250);
-      pulse_row(b1, b2);
-    }
-    for (b2 = 1; b2; b2 <<= 1) {
-      delay(250);
-      pulse_row(b1, b2);
-    }
+  // test rows:
+  byte b1, b2 = 0;
+  for (b1 = 1; b1; b1 <<= 1) {
+    pulse_row(b1, b2);
+    wait_millis(250);
+  }
+  for (b2 = 1; b2; b2 <<= 1) {
+    pulse_row(b1, b2);
+    wait_millis(250);
   }
 }
 
 void
 comm_test(void) {
-  for (;;) {
-    byte abort = 0;
-    unsigned int errors = 0;
-    while (!(UCSR0A & (1 << RXC0))) ;
-    unsigned long start_time = millis();
-    if (UDR0 != 0) errors += 1;
-    for (byte i = 1; i; i++) {
-      while (!(UCSR0A & (1 << RXC0))) ;
-      if (millis() - start_time > 20) {
-        abort = 1;
-        break;
-      }
-      if (UDR0 != i) errors += 1;
+  unsigned int errors = 0;
+  while (!(UCSR0A & (1 << RXC0))) ;
+  if (UDR0 != 0) errors += 1;
+  for (byte i = 1; i; i++) {
+    TCNT2 = 0;
+    while (!(UCSR0A & (1 << RXC0))) {
+      if (TCNT2 > 200) return;    // don't wait longer than 400 uSec
     }
-    if (!abort) {
-      set_column(byte(errors), 0xF0 | byte(errors >> 8), 7);
-    }
+    if (UDR0 != i) errors += 1;
   }
+  set_column(byte(errors), 0xF0 | byte(errors >> 8), 7);
+  wait_until(53); // wait for lights to turn off before reseting TCNT2 again...
 }
 
 void
@@ -169,13 +174,16 @@ setup(void) {
   PORTD = 0x02;   // enable pullup on pin 1
   PORTC = 0x04;   // enable pullup on analog pin 2
 
+  TIMSK0 = 0;     // disable interrupts for timer0 (used by Arduino library
+                  // for delay, millis and micros).
+
   // set up Timer2 in normal mode with prescaler of 32 (2uSec per timer tick).
   // TCNT2 has timer count.
   // GTCCR = 2 to reset prescaler count
   OCR2A = 48;     // .1mSec (100uSec)
                   // (50 - 1 delay - 1 for TCNT2 starting at 0xFF rather than 0)
-  OCR2B = 73;     // .15mSec (150uSec)
-                  // (75 - 1 delay - 1 for TCNT2 starting at 0xFF rather than 0)
+  OCR2B = 88;     // .18mSec (180uSec)
+                  // (90 - 1 delay - 1 for TCNT2 starting at 0xFF rather than 0)
   ASSR = 0;
   TIMSK2 = 0;     // disable interrupts
   TCCR2A = 0x03;  // fast PWM mode
@@ -195,8 +203,8 @@ setup(void) {
   PORTC = 0;      // all outputs LOW
   DDRC = 0x3F;    // 6 output pins (0-5 out)
 
-  if (!led_button) led_test();    // never returns
-  if (!comm_button) comm_test();  // never returns
+  if (!led_button) for (;;) led_test();
+  if (!comm_button) for (;;) comm_test();
   Column = 7;
   interrupts();
 }
@@ -214,7 +222,7 @@ loop(void) {
     Loop_again = 0;     // set by OCR2B timer interrupt if .15mSec passes
     while (!(UCSR0A & (1 << RXC0))) ;
     if (Loop_again) {
-      // The 150uSec timer fired!  This is our clue to resync to Column 7.
+      // The 180uSec timer fired!  This is our clue to resync to Column 7.
       // This byte is the first byte after the pause and should really be the
       // first byte of Column 7.  (The timer interrupt sets the Column to 7).
       Byte1 = UDR0;
@@ -231,7 +239,7 @@ loop(void) {
   set_column(Byte1, Byte2, Column);
 
   // Decrement Column for the next Column.  This will get overwritten to 7 by
-  // the 150uSec timer firing, so that in any case, the Column is set right
+  // the 180uSec timer firing, so that in any case, the Column is set right
   // for the next set of bytes.
   Column = (Column - 1) & 0x07;
 }
