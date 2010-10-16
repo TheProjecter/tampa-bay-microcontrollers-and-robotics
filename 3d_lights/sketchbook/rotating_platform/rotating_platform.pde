@@ -196,6 +196,7 @@ report_comm2_test(void) {
 void
 check_byte(byte expected, byte index, byte max_time) {
   byte flags;
+  if (max_time < 200) max_time = 200;
   while (!(flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0))))) {
     if (TCNT2 > max_time) return;
   }
@@ -220,19 +221,19 @@ comm2_test_slice(byte first, byte skip_first) {
   // wait for the show to start...
   if (!skip_first) {
     if (first) check_byte_timed(0x01, 0, 0, 255, 0);      // 0-inf
-    else       check_byte_timed(0x01, 0, 90, 125, 0);     // 180-250 uSec
+    else       check_byte_timed(0x01, 0, 112, 138, 0);    // 896-1104 uSec
   }
   GTCCR = 2;     // reset prescalar for timer2
-  TCNT2 = 0;     // timer2 ticks at 2uSec/tick
+  TCNT2 = 0;     // timer2 ticks at 8uSec/tick
   byte time1 = 0;
-  byte time2 = check_byte_timed(0x80, 1, 0, time1 + 30, 1);
-  if (time2 > time1 + 90) return 1;
+  byte time2 = check_byte_timed(0x80, 1, 0, time1 + 6, 1);
+  if (time2 > time1 + 23) return 1;
   for (byte i = 1; i < 8; i++) {
-    // 96-110 uSec from last column
-    time1 = check_byte_timed(0x01 << i, 0, time1 + 48, time1 + 55, 0);
+    // 96-120 uSec from last column
+    time1 = check_byte_timed(0x01 << i, 0, time1 + 12, time1 + 15, 0);
     if (time1 > time2 + 90) return 1;
-    // 0-60 uSec from start of column
-    time2 = check_byte_timed(0x80 >> i, 1, 0, time1 + 30, 1);
+    // 0-48 uSec from start of column
+    time2 = check_byte_timed(0x80 >> i, 1, 0, time1 + 6, 1);
     if (time2 > time1 + 90) return 1;
   } // end for (i)
   return 0;
@@ -242,6 +243,7 @@ void
 comm2_test(void) {
   byte first = 1;
   byte skip_first = 0;
+  TCCR2B = 0x05;  // prescaler = 128 (8 uSec/tick)
   // wait for the show to start...
   for (byte frame = 0; frame < 3; frame++) {
     for (byte slice = 0; slice < 50; slice++) {
