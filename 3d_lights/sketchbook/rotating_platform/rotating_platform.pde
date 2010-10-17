@@ -67,6 +67,10 @@ UBRR0L  - baud rate register, 1=500K, 3=250K
 
 *********************************************************/
 
+volatile byte Column;
+volatile byte Loop_again;
+byte Byte1, Byte2;
+
 #define TURN_COLUMN_OFF()       \
   PORTB = 0;                    \
   PORTC = 0;                    \
@@ -86,6 +90,7 @@ set_column(byte b1, byte b2, byte column) {
   TCNT2 = 255;   // set timer2 value to 0xFF
   TIFR2 = 6;     // reset OCF2A (2) and OCF2B (4) match flags
   TIMSK2 = 0x06; // enable compare match OCR2A and OCR2B interrupt
+  Loop_again = 0;
 }
 
 ISR(TIMER2_COMPA_vect) {
@@ -93,10 +98,6 @@ ISR(TIMER2_COMPA_vect) {
                    // leave OCR2B match enabled.
   TURN_COLUMN_OFF();
 }
-
-byte Column;
-byte Loop_again;
-byte Byte1, Byte2;
 
 ISR(TIMER2_COMPB_vect) {
   TIMSK2 = 0;     // disable compare match OCR2A and OCR2B interrupt
