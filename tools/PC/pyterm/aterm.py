@@ -107,8 +107,8 @@ class terminal(object):
             self.close()
             if self.thread is not None:
                 #sys.stderr.write("exiting thread %s\n" % self.name)
-                self.thread.exit()
-                sys.stderr.write("You should not see this!\n")
+                #self.thread.exit()
+                #sys.stderr.write("You should not see this!\n")
 
 class usb(terminal):
     r'''Reads and writes to USB (Arduino).
