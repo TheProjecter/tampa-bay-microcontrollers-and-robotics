@@ -66,6 +66,7 @@ class shape(object):
     def __init__(self): pass
 
     def __contains__(self, point):
+        if point is None: return False
         return self.contains(point)
 
 class sphere(shape):
@@ -86,5 +87,8 @@ class sphere(shape):
         self.center = center
         self.radius = radius
 
+    def __repr__(self):
+        return "<sphere at %s, radius %g>" % (self.center, self.radius)
+
     def contains(self, point):
-        return self.center.distance_to(point) <= self.radius
+        return self.center.distance_to(point) <= self.radius + 1e-4

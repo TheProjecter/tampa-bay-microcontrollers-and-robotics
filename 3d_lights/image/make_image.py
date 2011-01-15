@@ -24,7 +24,7 @@ def write(im, filename="coordinate_map.png"):
 def add(pt1, pt2):
     r'''Adds two points.
 
-        >>> add((1,2) (3,4))
+        >>> add((1,2), (3,4))
         (4, 6)
     '''
     return pt1[0] + pt2[0], pt1[1] + pt2[1]
@@ -32,7 +32,7 @@ def add(pt1, pt2):
 def sub(pt1, pt2):
     r'''Subtracts two points.
 
-        >>> sub((4,3) (1,2))
+        >>> sub((4,3), (1,2))
         (3, 1)
     '''
     return pt1[0] - pt2[0], pt1[1] - pt2[1]
