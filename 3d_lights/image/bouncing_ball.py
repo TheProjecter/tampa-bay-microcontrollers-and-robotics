@@ -12,8 +12,9 @@ import render
 
 class ball(shape.sphere):
     def __init__(self, radius):
-        super(ball, self).__init__(shape.point(0, 0, 8), radius)
-        self.v = shape.point(0.3, 0.4, math.sqrt(1.0 - 0.3*0.3 - 0.4*0.4))
+        super(ball, self).__init__(shape.point(-2, 3, 8), radius)
+        self.v = shape.point(0.3, 0.4, math.sqrt(1.0 - 0.3*0.3 - 0.4*0.4)) \
+                      .scale(1.5)
 
     def move(self):
         self.center += self.v

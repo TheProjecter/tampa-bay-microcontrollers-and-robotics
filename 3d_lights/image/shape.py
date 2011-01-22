@@ -59,6 +59,9 @@ class point(object):
             25.0
         '''
         return math.hypot(math.hypot(self.x - b.x, self.y - b.y), self.z - b.z)
+    
+    def scale(self, n):
+        return point(self.x * n, self.y * n, self.z * n)
 
 class shape(object):
     r'''Might add coordinate transformation logic here later...
