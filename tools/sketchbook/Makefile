@@ -23,8 +23,9 @@
 #
 #  1. Copy this file into the folder with your sketch.
 #
-#  2. Below, modify the line containing "TARGET" to refer to the name of
-#     of your program's file without an extension (e.g. TARGET = foo).
+#  2. If you don't have a .pde file, modify the line below containing
+#     "TARGET" to refer to the name of your program's file without an
+#     extension (e.g. TARGET := foo).
 #
 #  3. Modify the line containg "ARDUINO" to point the directory that
 #     contains the Arduino core (for normal Arduino installations, this
@@ -54,7 +55,7 @@ UPLOAD_RATE := 57600
 
 PORT := /dev/ttyUSB*
 TARGET := $(patsubst %.pde,%,$(wildcard *.pde))
-ARDUINO := $(HOME)/arduino-0019
+ARDUINO := $(HOME)/arduino-0022
 ARDUINO_SRC := $(ARDUINO)/hardware/arduino/cores/arduino
 ARDUINO_LIB_SRC := $(ARDUINO)/libraries
 ARDUINO_LIBS := $(wildcard $(ARDUINO_LIB_SRC)/*)
@@ -64,9 +65,10 @@ ARDUINO_TOOLS := $(ARDUINO)/tools
 INCLUDE := -I$(ARDUINO_SRC) \
 	   $(ARDUINO_LIBS:%=-I%) \
 	   $(ARDUINO_UTILITY_LIBS:%=-I%) \
-	   -I$(ARDUINO_LIB_SRC)
+	   -I$(ARDUINO_LIB_SRC) \
+           -I.
 SRC := 
-CXXSRC := applet/$(TARGET).cpp
+CXXSRC := applet/$(TARGET).cpp $(wildcard *.cpp)
 
 
 # Name of this Makefile (used for "make depend").
@@ -78,7 +80,8 @@ MAKEFILE := Makefile
 #DEBUG := stabs
 DEBUG :=
 
-OPT := s
+#OPT := s
+OPT := 3
 
 # Place -D or -U options here
 CDEFS := -DF_CPU=$(F_CPU) -DARDUINO=19
@@ -129,7 +132,9 @@ REMOVE := rm -f
 MV := mv -f
 
 # Define all object files.
-OBJ := $(SRC:.c=.o) $(CXXSRC:.cpp=.o) $(ASRC:.S=.o)
+OBJ := $(patsubst %.c,applet/%.o,$(notdir $(SRC))) \
+    $(patsubst %.cpp,applet/%.o,$(notdir $(CXXSRC))) \
+    $(patsubst %.S,applet/%.o,$(notdir $(ASRC)))
 
 # Define all listing files.
 LST := $(ASRC:.S=.lst) $(CXXSRC:.cpp=.lst) $(SRC:.c=.lst)
@@ -189,8 +194,14 @@ extcoff: applet/$(TARGET).elf
 .cpp.o:
 	$(CXX) -c $(ALL_CXXFLAGS) $< -o $@ 
 
+applet/%.o: %.cpp
+	$(CXX) -c $(ALL_CXXFLAGS) $< -o $@ 
+
 # Compile: create object files from C source files.
 .c.o:
+	$(CC)  -c $(ALL_CFLAGS) $< -o $@ 
+
+applet/%.o: %.c
 	$(CC)  -c $(ALL_CFLAGS) $< -o $@ 
 
 
@@ -250,8 +261,12 @@ depend:
 	fi
 	echo '# DO NOT DELETE THIS LINE -- make depend depends on it.' \
 		>> $(MAKEFILE); \
-	$(CC) -M -mmcu=$(MCU) $(CDEFS) $(INCLUDE) $(SRC) $(ASRC) >> $(MAKEFILE)
-	$(CXX) -M -mmcu=$(MCU) $(CXXDEFS) $(INCLUDE) $(CXXSRC) >> $(MAKEFILE)
+        (if [ $(SRC) $(ASRC) ]; \
+         then \
+            $(CC) -M -mmcu=$(MCU) $(CDEFS) $(INCLUDE) $(SRC) $(ASRC); \
+         fi; \
+	 $(CXX) -M -mmcu=$(MCU) $(CXXDEFS) $(INCLUDE) $(CXXSRC); \
+        ) | sed '/^[^ ]/s,^,applet/,' >> $(MAKEFILE)
 
 .PHONY:	all build eep lss sym coff extcoff clean depend pd_close_serial pd_test
 
@@ -294,3 +309,4 @@ test:
 	@echo '$$(OBJ)'
 	@echo "$(OBJ)"
 
+# DO NOT DELETE THIS LINE -- make depend depends on it.
