@@ -67,7 +67,7 @@ INCLUDE := -I$(ARDUINO_SRC) \
 	   $(ARDUINO_UTILITY_LIBS:%=-I%) \
 	   -I$(ARDUINO_LIB_SRC) \
            -I.
-SRC := 
+SRC := $(wildcard *.c)
 CXXSRC := applet/$(TARGET).cpp $(wildcard *.cpp)
 
 
@@ -80,8 +80,10 @@ MAKEFILE := Makefile
 #DEBUG := stabs
 DEBUG :=
 
+# s for space optimization, 3 gets huge!
 #OPT := s
-OPT := 3
+#OPT := 3
+OPT := 2
 
 # Place -D or -U options here
 CDEFS := -DF_CPU=$(F_CPU) -DARDUINO=19
@@ -208,6 +210,10 @@ applet/%.o: %.c
 # Compile: create assembler files from C source files.
 .c.s:
 	$(CC) -S $(ALL_CFLAGS) $< -o $@
+
+# Compile: create assembler files from C source files.
+.cpp.s:
+	$(CXX) -S $(ALL_CXXFLAGS) $< -o $@
 
 
 # Assemble: create object files from assembler source files.
