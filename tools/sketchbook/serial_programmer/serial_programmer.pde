@@ -18,6 +18,10 @@ const prog_char Help_msg4[] PROGMEM =
     "s wwxxyyzz - send 4 bytes (hex) to SPI\n";
 const prog_char Help_msg5[] PROGMEM =
     "d dd       - delay dd mSec\n";
+const prog_char Help_msg6[] PROGMEM =
+    "\n";
+const prog_char Help_msg7[] PROGMEM =
+    "READY\n";
 
 const prog_char Input_buf_overflow[] PROGMEM =
     "ERROR: Input buffer overflow, command too long\n";
@@ -135,12 +139,14 @@ help(void) {
     print_P(Help_msg3);
     print_P(Help_msg4);
     print_P(Help_msg5);
+    print_P(Help_msg6);
+    print_P(Help_msg7);
 }
 
 void
 setup(void) {
-    Serial.begin(57600);
-    //Serial.begin(500000);
+    //Serial.begin(57600);
+    Serial.begin(500000);
 
     SPI.setBitOrder(MSBFIRST);
     SPI.setDataMode(SPI_MODE0);
@@ -149,7 +155,12 @@ setup(void) {
     help();
 
     pinMode(9, OUTPUT);
+    pinMode(10, OUTPUT);
+    pinMode(11, OUTPUT);
+    pinMode(13, OUTPUT);
     digitalWrite(9, LOW);
+    digitalWrite(10, LOW);
+    digitalWrite(13, LOW);
 }
 
 void
@@ -202,11 +213,13 @@ send(const char *arg) {
         return;
     }
     SPI.begin();
+    digitalWrite(10, HIGH);
     data_in[0] = SPI.transfer(data_out[0]);
     data_in[1] = SPI.transfer(data_out[1]);
     data_in[2] = SPI.transfer(data_out[2]);
     data_in[3] = SPI.transfer(data_out[3]);
     SPI.end();
+    digitalWrite(10, LOW);
     print_P(Send_msg1);
     for (i = 0; i < 4; i++) {
         print_hex(data_in[i]);
