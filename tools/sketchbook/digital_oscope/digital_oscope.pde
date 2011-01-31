@@ -1,5 +1,14 @@
 // digital_oscope.pde
 
+/****************************************************************************
+ * This program samples the 6 pins 8-13 (PortB), using pin 8 HIGH as a trigger.
+ *
+ * Each output line has the new bit pattern for the 6 pins, with + or -
+ * indicating a change, and . for no change.  This is followed by the time
+ * since the last output line and the time since the initial trigger (both in
+ * uSec).
+ ****************************************************************************/
+
 // This header is in /usr/lib/avr/include on Linux and maps to <avr/iom328p.h>
 #include <avr/io.h>
 #include <avr/pgmspace.h>
@@ -11,7 +20,8 @@ fstr(PGM_P p_str) {
   return strncpy_P(Str_buf, p_str, 59);
 }
 
-const char PROGMEM Digital_oscope[] = "digital_oscope:";
+const char PROGMEM Digital_oscope[] =
+  "digital_oscope.  Reads pins 8-13, 8 HIGH is trigger:";
 const char PROGMEM F_command[] =
   "  f    - fast 190 nSec sample rate (total 288 uSec)";
 const char PROGMEM S_command[] =
@@ -19,14 +29,17 @@ const char PROGMEM S_command[] =
 const char PROGMEM C_command[] =
   "  c    - sample changes (for slow data rates)";
 
-const char PROGMEM Pre_trigger[] = "pre-trigger";
+const char PROGMEM Pre_trigger[] = "Pins 8-13 just prior to trigger:";
 const char PROGMEM Waiting_750_changes[] = "waiting 750 changes";
 const char PROGMEM Waiting_fast[] =
-  "waiting for 288 mSec sample at 190 nSec sample rate";
+  "waiting for 288 uSec sample at 190 nSec sample rate";
 
 const char PROGMEM Waiting1[] = "waiting for ";
 const char PROGMEM Waiting2[] = " mSec sample at ";
 const char PROGMEM Waiting3[] = " uSec sample rate";
+
+const char PROGMEM Send_data_header[] =
+  "Format: pins-changed uSec-since-last-line uSec-total";
 
 void
 help(void) {
@@ -98,7 +111,7 @@ byte Data[DATA_SIZE];
   get256(i+768)
 
 void
-get_data(void) {
+get_data(void) {                        // fast mode, 1 byte per sample
   byte b1 = 0, b2;
   while (!((b2 = PINB) & 1)) b1 = b2;
   get1024(2);     // this takes 3 clock cycles per sample
@@ -109,7 +122,7 @@ get_data(void) {
 }
 
 void
-get_slow_data(int sample_rate) {
+get_slow_data(int sample_rate) {        // slow mode, 1 byte per sample
   byte b1 = 0, b2;
   while (!((b2 = PINB) & 1)) b1 = b2;
   unsigned long start_time = micros();
@@ -127,7 +140,7 @@ void
 get_changes(void) {
   /*******
   This records two bytes per sample:
-    1.  time since last sample (in .01 mSec increments).
+    1.  time since last sample (in 10 uSec increments).
     2.  the sample
   Initial 255 values add to the length and to the time since the last sample.
   It is possible that the 255 prefixes exhaust the Data buffer.  In this case
@@ -142,6 +155,8 @@ get_changes(void) {
   Data[1] = b2;
   for (int i = 2; i < DATA_SIZE - 1; i += 2) {
     unsigned long now;
+
+    // wait for something to change
     for (;;) {
       now = micros();
       if ((b1 = PINB) != b2) break;
@@ -152,8 +167,9 @@ get_changes(void) {
           return;
         }
         last_time += 2550;
-      }
-    }
+      } // end if (time overflow)
+    } // end for (;;)
+
     unsigned int elapsed = (unsigned int)((now - last_time) / 10);
     while (elapsed > 254) {
       Data[i++] = 255;
@@ -164,7 +180,7 @@ get_changes(void) {
     Data[i + 1] = b1;
     b2 = b1;
     last_time = now;
-  }
+  } // end for (i)
 }
 
 unsigned long
@@ -186,6 +202,7 @@ send_bits(byte last, byte now,
 
 void
 send_changes(void) {
+  Serial.println(fstr(Pre_trigger));
   for (byte j = 0; j < 6; j++) {
     if (Data[0] & (1 << j)) {
       Serial.print("+ ");
@@ -193,7 +210,7 @@ send_changes(void) {
       Serial.print("- ");
     }
   }
-  Serial.println(fstr(Pre_trigger));
+  Serial.println(fstr(Send_data_header));
   byte last_byte = Data[0];
   unsigned long cumulative_time = send_bits(last_byte, Data[1], 0ul, 0ul);
   for (int i = 2; i < DATA_SIZE - 1; i += 2) {
@@ -228,6 +245,7 @@ check_bit(int i, byte bit, byte bytes_output) {
 
 void
 send_data(float sample_rate) {
+  Serial.println(fstr(Pre_trigger));
   for (byte j = 0; j < 6; j++) {
     if (Data[0] & (1 << j)) {
       Serial.print("+ ");
@@ -235,7 +253,7 @@ send_data(float sample_rate) {
       Serial.print("- ");
     }
   }
-  Serial.println(fstr(Pre_trigger));
+  Serial.println(fstr(Send_data_header));
   int last = 0;
   for (int i = 1; i < DATA_SIZE; i++) {
     byte bytes_output = 0;
