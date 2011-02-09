@@ -13,6 +13,13 @@
 // writes:
 #define CTS_PIN                 14
 
+// State output pins:
+#define STATE_0_PIN             15
+#define STATE_1_PIN             16
+#define STATE_2_PIN             17
+
+#define REPORT_STATE()          PORTC = (State << 1) | (PINC & 0x01)
+
 // This header is in /usr/lib/avr/include on Linux and maps to <avr/iom328p.h>
 #include <avr/io.h>
 #include <avr/pgmspace.h>
@@ -109,6 +116,11 @@ setup(void) {
   pinMode(CTS_PIN, OUTPUT);
   digitalWrite(CTS_PIN, LOW);               // enable PC to send data
 
+  // Set up State pins:
+  pinMode(STATE_0_PIN, OUTPUT);
+  pinMode(STATE_1_PIN, OUTPUT);
+  pinMode(STATE_2_PIN, OUTPUT);
+
   TIMSK0 = 0;     // disable interrupts: micros, millis and delay don't work
                   //                     from here on...
 
@@ -184,7 +196,7 @@ unsigned int Buf_overflows;
 
 void
 print_errors(void) {
-  PORTC = 1;
+  PORTC |= 1;
   print_char(ERROR_COUNT_MSG);
   print_char(Incomplete_bufs);
   print_char(Where_incomplete);
@@ -202,7 +214,7 @@ print_errors(void) {
   Where_data_overrun = 0;
   Buf_overflows = 0;
   Where_overflow = 0;
-  if (!Sync_seen) PORTC = 0;
+  if (!Sync_seen) PORTC &= ~1;
 }
 
 byte Rev_count = 0;
@@ -210,11 +222,11 @@ byte Rev_count = 0;
 void
 print_rps(unsigned int rotation) {
   if (++Rev_count >= 10) {
-    PORTC = 1;
+    PORTC |= 1;
     print_char(RPS_MSG);
     print_int(rotation);
     Rev_count = 0;
-    if (!Sync_seen) PORTC = 0;
+    if (!Sync_seen) PORTC &= ~1;
   }
 }
 
@@ -226,9 +238,9 @@ print_rps(unsigned int rotation) {
 #define RECV_TEST(flags)                      \
   if (Recv_ok && (flags = (UCSR0A & ((1 << RXC0) | (1 << FE0) | (1 << DOR0))))) {    \
     byte c = UDR0;                            \
-    if (!Ignore_next_escape) {                 \
+    if (!Ignore_next_escape) {                \
       if (c == SYNC_CHAR) {                   \
-        PORTC = 1;                            \
+        PORTC |= 1;                           \
         Recv_ok = 0;                          \
         Sync_seen = 1;                        \
       } else if (c != ESC_CHAR) {             \
@@ -309,7 +321,7 @@ print_rps(unsigned int rotation) {
       Read_ahead_count = 0;                                        \
       Recv_ok = 1;                                                 \
       Sync_seen = 0;                                               \
-      PORTC = 0;                                                   \
+      PORTC &= ~1;                                                 \
     } else if (Bytep - Recv_start < MIN_BYTES) {                   \
       /* incomplete results, truncate it */                        \
       Incomplete_bufs += 1;                                        \
@@ -321,7 +333,7 @@ print_rps(unsigned int rotation) {
       Read_ahead_count = 0;                                        \
       Recv_ok = 1;                                                 \
       Sync_seen = 0;                                               \
-      PORTC = 0;                                                   \
+      PORTC &= ~1;                                                 \
     }                                                              \
   } /* end if (Sync_seen) */
 
@@ -348,7 +360,7 @@ print_rps(unsigned int rotation) {
       Recv_start = Bytep = Buffer[Recv_buf];            \
       Endp = Bytep + 799;                               \
       Recv_ok = 1;                                      \
-      PORTC = 0;                                        \
+      PORTC &= ~1;                                      \
       if (Sync_seen) {                                  \
         for (byte i = 0; i < Read_ahead_count; i++) {   \
           *Bytep++ = Read_ahead_buf[i];                 \
@@ -473,6 +485,7 @@ send_256(void) {
 void
 loop(void) {
   byte flags;
+  REPORT_STATE();
   switch (State) {
   case WAIT_SYNC_START:
     // From program start
@@ -506,6 +519,7 @@ loop(void) {
     }
     if (!(PIND & 0x20)) { // push button down
       send_256();
+      //REPORT_STATE();
       TCNT1 = 0;
       while (TCNT1 < 62500u) ;    // delay 250 mSec
       TCNT1 = 0;
@@ -545,6 +559,7 @@ loop(void) {
       }
       if (Bytep - Recv_start > MIN_BYTES) {
         State = WAIT_MAG;
+        //REPORT_STATE();
       }
     } // end if (byte received)
     if (!(PIND & 0x80) && TCNT1 > 5000) {
@@ -597,10 +612,11 @@ loop(void) {
           Bytep = Recv_start = Buffer[Recv_buf];
           Endp = Bytep + 799;
         } else {
-          PORTC = 1;
+          PORTC |= 1;
           Recv_ok = 0;
           Sync_seen = 1;
           State = WAIT_MAG2;
+          //REPORT_STATE();
         }
       } else if (Bytep <= Endp) *Bytep++ = c;
     } // end if (byte received)
@@ -620,6 +636,7 @@ loop(void) {
         print_rps(rotation);
       }
       State = SEND;
+      //REPORT_STATE();
     }
     break;
   case WAIT_MAG2:
@@ -665,6 +682,7 @@ loop(void) {
         print_rps(rotation);
       }
       State = SEND;
+      //REPORT_STATE();
     } // end if (mag pickup || switch in async mode)
     break;
   case SEND:
