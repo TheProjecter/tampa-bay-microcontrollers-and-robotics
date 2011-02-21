@@ -35,7 +35,7 @@ def by_page(frame):
         >>> for p in pages[1:]:
         ...     assert p == pages[0]
     '''
-    return (page for page in grouper(8*16, frame))
+    return grouper(8*16, frame)
 
 def by_row(page):
     r'''Generates page by rows of 8.
@@ -49,7 +49,7 @@ def by_row(page):
         ...         assert col == row[0]
         0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
     '''
-    return (row for row in zip(*grouper(16, page)))
+    return zip(*grouper(16, page))
 
 def to_file(f, bytes):
     for b in bytes:

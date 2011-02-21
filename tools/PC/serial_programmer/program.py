@@ -2,6 +2,18 @@
 
 # program.py
 
+# Connect Wires as follows:
+#
+#   Arduino pin#    =>   Atmega chip pin#
+#         9                      1              Reset
+#        11                     17              MOSI
+#        12                     18              MISO
+#        13                     19              SCK
+#        10                     16              SS  Slave Select not needed
+#                                                   to program the chip, but
+#                                                   useful for logic analyzer.
+
+
 # Serial Programming Steps (pg 311):
 #
 # Power On Sequence:
@@ -38,8 +50,8 @@
 #       - Poll Command: F0 00 00 data-out
 #
 # Read Memory:
-# - Read High Byte Flash:     28 addr-MSB addr-LSB data-out
-# - Read Low Byte Flash:      20 addr-MSB addr-LSB data-out
+# - Read High Byte Flash:     28 addr-MSB addr-LSB data-out (addr is word addr)
+# - Read Low Byte Flash:      20 addr-MSB addr-LSB data-out (addr is word addr)
 # - Read EEPROM:              A0 addr-MSB addr-LSB data-out
 # - Read Lock Bits:           58 00       00       lock-bits-out
 # - Read Signature Byte:      30 00       addr2    byte-out     (2 bit addr)
@@ -234,7 +246,8 @@ def chip_erase():
 def program_flash_page(addr, s):
     r'''Program one page of flash memory.
 
-    addr must be mod 64 and is an int.  s is in hex and must be 128 bytes.
+    addr is word address, must be mod 64, and is an int.  s is in hex and may
+    represent up to 128 bytes of data (len(s) after removing spaces <= 256).
     '''
     s = s.replace(' ', '')
     assert addr % 64 == 0
@@ -254,7 +267,7 @@ def program_flash_page(addr, s):
 def read_flash_page(addr):
     r'''Read one page of flash memory at addr.
 
-    addr must be mod 64 and is an int.
+    addr is word address, must be mod 64, and is an int.
     '''
     assert addr % 64 == 0
     return ''.join(send_read("28" + to_hex(addr + i, 4) + "00") +
@@ -402,9 +415,9 @@ def program_flash(filename):
 def menu():
     print "e                -- enable_programming"
     print "c                -- read_configuration"
-    print "r reg_addr       -- read I/O register"
-    print "w reg_addr=data  -- write I/O register"
-    print "f page_addr      -- read flash page"
+    print "r reg_addr       -- read I/O register (hex)"
+    print "w reg_addr=data  -- write I/O register (hex=hex)"
+    print "f page_addr      -- read flash page (word addr, mod 64)"
     print "x                -- chip erase"
     print "F filename       -- program flash"
     print "q                -- quit"
@@ -431,7 +444,7 @@ def run(devnum = 0):
         try:
             while True:
                 line = Arduino.readline().rstrip()
-                #print "start up line:", repr(line)
+                print "start up line:", repr(line)
                 if line == "READY": break
             print "Power up the chip and press ENTER."
             raw_input()
