@@ -60,5 +60,5 @@ loop(void) {
     }
 
     // wait 500mSec between pulses.
-    delay(500);
+    delay(100);
 }
