@@ -60,8 +60,13 @@
  *
  ***********************************************/
 
+// Distance == SPEED_OF_SOUND * (time + C)
+
 // in/sec
-#define SPEED_OF_SOUND          float(1151*12)
+#define SPEED_OF_SOUND          (float(1133.34)*12.0)
+
+// Time offset (uSec)
+#define C                       -354
 
 // This requires 4 bytes per sample.
 #define NUM_SAMPLES                     40*5
@@ -96,112 +101,81 @@ setup(void) {
     delay(250);                     // give units time to initialize
 }
 
-int Samples[2][NUM_SAMPLES];        // Samples[0] is left, Samples[1] is right
-unsigned int Time[2][NUM_SAMPLES];
+// Samples/Times/Num_peaks[0] is left, Samples/Times/Num_peaks[1] is right
+int Samples[2][NUM_SAMPLES];
+unsigned int Times[2][NUM_SAMPLES];
+int Num_peaks[2];
 
+// Pings and gathers NUM_SAMPLES ADC samples for both L and R sensors into
+// Samples and Times arrays.
 void
-ping(void) {
-    int i;
-
+ping(byte ping_pin = LEFT_PING_PIN, byte sample_pin = LEFT_SAMPLE_PIN) {
     // trigger ping:
-    digitalWrite(LEFT_PING_PIN, HIGH);
-    //digitalWrite(RIGHT_PING_PIN, HIGH);
+    digitalWrite(ping_pin, HIGH);
     delayMicroseconds(20);
-    //delayMicroseconds(400);
-    digitalWrite(LEFT_PING_PIN, LOW);
-    //digitalWrite(RIGHT_PING_PIN, LOW);
+    digitalWrite(ping_pin, LOW);
 
     // It takes 20.5 mSec before the ping is sent...
     // Wait for ping:
-    while (analogRead(LEFT_SAMPLE_PIN) < PING_THRESHOLD) ;
-
-    // It's show time!
+    int last_sample = 0;
+    int current_sample = analogRead(sample_pin);
+    unsigned long last_time = 0;
     unsigned long start = micros();
-
-    // read samples:
-    for (i = 0; i < NUM_SAMPLES; i++) {
-        Time[0][i] = (unsigned int)(micros() - start);
-        Samples[0][i] = analogRead(LEFT_SAMPLE_PIN);
-        Time[1][i] = (unsigned int)(micros() - start);
-        Samples[1][i] = analogRead(RIGHT_SAMPLE_PIN);
+    while (current_sample < PING_THRESHOLD) {
+        last_sample = current_sample;
+        last_time = start;
+        start = micros();
+        current_sample = analogRead(sample_pin);
     }
 
-    // report results:
-    for (i = 1; i < NUM_SAMPLES - 1; i++) {
+    // Adjust start time:
+    int d = current_sample - last_sample;
+    start += ((start - last_time) * (PING_THRESHOLD - last_sample) + d/2) / d;
+
+    // Read samples:
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        Times[0][i] = (unsigned int)(micros() - start);
+        Samples[0][i] = analogRead(LEFT_SAMPLE_PIN);
+        Times[1][i] = (unsigned int)(micros() - start);
+        Samples[1][i] = analogRead(RIGHT_SAMPLE_PIN);
+    }
+}
+
+// Find peaks in Samples, and record in Samples and Times overwriting sample
+// data.  Times becomes round trip distance in hundreths of an inch.  This sets
+// Num_peaks.
+void
+find_peaks(void) {
+    Num_peaks[0] = Num_peaks[1] = 0;
+
+    for (int i = 1; i < NUM_SAMPLES - 1; i++) {
         for (byte j = 0; j < 2; j++) {
             if (Samples[j][i] > LOW_THRESHOLD &&
                 Samples[j][i] > Samples[j][i - 1] &&
                 Samples[j][i] > Samples[j][i + 1]
             ) {
-                /**************************
-                Serial.print('\n');
-
-                Serial.print(j, DEC);
-                Serial.print(':');
-                Serial.print(Samples[j][i-1]);
-                Serial.print(' ');
-                Serial.print(Samples[j][i]);
-                Serial.print(' ');
-                Serial.print(Samples[j][i+1]);
-                Serial.print('@');
-                Serial.println(Time[j][i]);
-                **************************/
-
                 // t1 is i-1, t2 is i and t3 is i+1
 
-                // we take Time[j][i] as 0 to give us c directly:
+                // we take Times[j][i] as 0 to give us c directly:
                 float c = Samples[j][i];        // at t2
 
-                float t1 = -float(Time[j][i] - Time[j][i-1]);
-                float t3 = Time[j][i+1] - Time[j][i];
-
-                /**************************
-                Serial.print(t1);
-                Serial.print('<');
-                Serial.print(c);
-                Serial.print('<');
-                Serial.println(t3);
-                **************************/
+                float t1 = -float(Times[j][i] - Times[j][i-1]);
+                float t3 = Times[j][i+1] - Times[j][i];
 
                 // equation1: a * a1 + b * b1 + c1 == 0
                 float a1 = t1*t1;
                 float b1 = t1;
                 float c1 = c - Samples[j][i-1];
 
-                /**************************
-                Serial.print("e1: ");
-                Serial.print(a1);
-                Serial.print(',');
-                Serial.print(b1);
-                Serial.print(',');
-                Serial.println(c1);
-                **************************/
-
                 // equation3: a * a3 + b * b3 + c3 == 0
                 float a3 = t3*t3;
                 float b3 = t3;
                 float c3 = c - Samples[j][i+1];
 
-                /**************************
-                Serial.print("e3: ");
-                Serial.print(a3);
-                Serial.print(',');
-                Serial.print(b3);
-                Serial.print(',');
-                Serial.println(c3);
-                **************************/
-
                 // multiply equation1 * (a3/a1) and subtract equation3 to get
                 // equation4: b*b4 + c4 == 0
                 float b4 = b1 * (a3/a1) - b3;
                 float c4 = c1 * (a3/a1) - c3;
-
-                /**************************
-                Serial.print("e4: ");
-                Serial.print(b4);
-                Serial.print(',');
-                Serial.println(c4);
-                **************************/
 
                 // solve equation4 for b:
                 float b = -c4/b4;
@@ -209,24 +183,16 @@ ping(void) {
                 // solve equation1 for a:
                 float a = -(b1*b + c1)/a1;
 
-                /**************************
-                Serial.print("a=");
-                Serial.print(a);
-                Serial.print(", b=");
-                Serial.println(b);
-                **************************/
-
                 if (a >= 0.0) {
                     Serial.println("oops!");
                 } else {
                     float t_max = -b/(2.0*a);
                     float s_max = a*t_max*t_max + b*t_max + c;
-                    float d_max = (t_max + Time[j][i]) / 1e6 * SPEED_OF_SOUND;
-                    if (j == 0) Serial.print("L: ");
-                    else        Serial.print("R: ");
-                    Serial.print(s_max);
-                    Serial.print("@");
-                    Serial.println(d_max);
+                    t_max += Times[j][i];
+                    float d_max = SPEED_OF_SOUND / 1e6 * float(t_max + C);
+                    Samples[j][Num_peaks[j]] = int(s_max);
+                    Times[j][Num_peaks[j]] = (unsigned int)(d_max * 100);
+                    Num_peaks[j] += 1;
                 }
             } // end if (max)
         } // end for (j)
@@ -234,9 +200,42 @@ ping(void) {
 }
 
 void
+report_peak(char side, int sample, unsigned int round_trip_distance) {
+    Serial.print(side);
+    Serial.print(": ");
+    Serial.print(sample);
+    Serial.print("@");
+    Serial.println(float(round_trip_distance)/100.0);
+}
+
+// Report peaks that are stored in Samples and Times.
+void
+report_peaks(void) {
+    int i[2];
+    i[0] = i[1] = 0;
+
+    for (;;) {
+        if (i[0] < Num_peaks[0]) {      // there are more left peaks
+            if (i[1] < Num_peaks[1] && Times[1][i[1]] < Times[0][i[0]]) {
+                report_peak('R', Samples[1][i[1]], Times[1][i[1]]);
+                i[1] += 1;
+            } else {
+                report_peak('R', Samples[0][i[0]], Times[0][i[0]]);
+                i[0] += 1;
+            }
+        } else if (i[1] < Num_peaks[1]) {
+            report_peak('R', Samples[1][i[1]], Times[1][i[1]]);
+            i[1] += 1;
+        } else break;
+    } // end for (;;)
+}
+
+void
 loop(void) {
     while (!Serial.available()) ;
     Serial.flush();     // purge input data
-    Serial.println("-------");
-    ping();
+    Serial.println("*********");
+    ping(LEFT_PING_PIN, LEFT_SAMPLE_PIN);
+    find_peaks();
+    report_peaks();
 }
