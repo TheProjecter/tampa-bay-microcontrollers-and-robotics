@@ -2,13 +2,15 @@
 
 # aterm.py
 
-from __future__ import with_statement
+from __future__ import with_statement, print_function
+
 import os
 import signal
 import sys
 import thread
 import threading
 import traceback
+import optparse
 
 from pyterm import comm
 
@@ -304,8 +306,7 @@ def import_module(module_path):
 
 def run(timeout = None, baud = None, crtscts = None, commands = None,
         format_strings = None, usage = None):
-    from optparse import OptionParser
-    parser = OptionParser()
+    parser = optparse.OptionParser()
     if usage is not None:
         parser.set_usage(usage)
     parser.add_option("-d", "--devnum", type="int", default=0,
@@ -325,6 +326,7 @@ def run(timeout = None, baud = None, crtscts = None, commands = None,
 
     if commands is None:
         parser.add_option("-c", "--commands", metavar="PYTHON.MODULE",
+                          action='callback', type="string",
                           callback=get_commands,
                           help="Python commands module")
 
@@ -338,16 +340,21 @@ def run(timeout = None, baud = None, crtscts = None, commands = None,
           options.crtscts, options.commands[0], options.commands[1])
 
 def get_commands(option, opt, module_path, parser):
+    print("option", option)
+    print("opt", opt)
+    print("module_path", module_path)
+    print("parser", parser)
     try:
         module = import_module(module_path)
     except (ImportError, AttributeError):
-        raise optparser.OptionValueError("Python module %r not found" %
+        raise optparse.OptionValueError("Python module %r not found" %
                                            (module_path,))
     try:
         return module.Commands, module.Format_strings
     except AttributeError:
-        raise optparser.OptionValueError(
-                "Python module %r does not have 'Commands' attribute" %
+        raise optparse.OptionValueError(
+                "Python module %r does not have 'Commands' or 'Format_strings' "
+                "attribute" %
                   (module_path,))
 
 if __name__ == "__main__":

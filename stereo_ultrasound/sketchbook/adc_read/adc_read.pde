@@ -72,9 +72,9 @@
 // Time offset (uSec)
 #define C                       -354
 
-// This requires 4 bytes per sample.
-#define NUM_SAMPLES                     40*5
-//#define NUM_SAMPLES                     20*5
+// This requires 8 bytes per sample.
+#define NUM_SAMPLES                     (40*5)
+//#define NUM_SAMPLES                     (20*5)
 
 #define LEFT_SAMPLE_PIN                 0
 #define RIGHT_SAMPLE_PIN                1
@@ -93,17 +93,24 @@ const prog_char Min[] PROGMEM = "min ";
 const prog_char Max[] PROGMEM = "max ";
 const prog_char Stars[] PROGMEM = "*************************\n";
 const prog_char Continue[] PROGMEM = "hit ENTER to continue\n";
-const prog_char Help1[] PROGMEM = "help:\n";
-const prog_char Help2[] PROGMEM = "  h     help\n";
-const prog_char Help3[] PROGMEM = "  -     no ping\n";
-const prog_char Help4[] PROGMEM = "  r     ping right\n";
-const prog_char Help5[] PROGMEM = "  R     ping right, report peaks\n";
-const prog_char Help6[] PROGMEM = "  L     ping left, report peaks\n";
-const prog_char Help7[] PROGMEM = "  else  ping left\n\n";
+const prog_char Help1[] PROGMEM  = "help:\n";
+const prog_char Help2[] PROGMEM  = "  h     help\n";
+const prog_char Help3[] PROGMEM  = "  -     sample: no ping\n";
+const prog_char Help4[] PROGMEM  = "  l     sample: ping left\n";
+const prog_char Help5[] PROGMEM  = "  r     sample: ping right\n";
+const prog_char Help6[] PROGMEM  = "  S     dump_samples\n";
+const prog_char Help7[] PROGMEM  = "  0     find_peaks(0)\n";
+const prog_char Help8[] PROGMEM  = "  p     find_peaks(LOW_THRESHOLD)\n";
+const prog_char Help9[] PROGMEM  = "  P     report_peaks\n";
+const prog_char Help10[] PROGMEM = "  f     find_objects\n\n";
 const prog_char Left_pin[] PROGMEM = "LEFT_PING_PIN is ";
 const prog_char Right_pin[] PROGMEM = "RIGHT_PING_PIN is ";
 const prog_char High[] PROGMEM = "HIGH\n";
 const prog_char Low[] PROGMEM = "LOW\n";
+const prog_char Left[] PROGMEM = "left ";
+const prog_char Right[] PROGMEM = "right ";
+const prog_char Samples_[] PROGMEM = "samples\n";
+const prog_char Peaks[] PROGMEM = "peaks\n";
 
 void
 print_P(const char PROGMEM *s) {
@@ -121,6 +128,9 @@ help(void) {
     print_P(Help5);
     print_P(Help6);
     print_P(Help7);
+    print_P(Help8);
+    print_P(Help9);
+    print_P(Help10);
 
     print_P(Left_pin);
     if (digitalRead(LEFT_PING_PIN)) {
@@ -158,12 +168,12 @@ setup(void) {
 
 // Samples/Times/Num_peaks[0] is left, Samples/Times/Num_peaks[1] is right
 int Samples[2][NUM_SAMPLES];
-unsigned int Times[2][NUM_SAMPLES];
+unsigned int Times[2][NUM_SAMPLES]; // uSecs (up to 65mSec, or ~32ft round trip)
 int Num_peaks[2];
 int Max_sample;
 int Min_sample;
 
-unsigned long Start;
+unsigned long Start;    // ping time in uSecs
 
 // Pings and returns the start time of the ping in microseconds.
 unsigned long
@@ -203,6 +213,26 @@ read_samples(unsigned long start) {
         Times[1][i] = (unsigned int)(micros() - start);
         Samples[1][i] = analogRead(RIGHT_SAMPLE_PIN);
     }
+}
+
+// Reads NUM_SAMPLES ADC samples for both L and R sensors into Samples and
+// Times arrays.  Times is microseconds.
+void
+dump_samples(void) {
+    // Dump samples:
+    for (byte i = 0; i < 2; i++) {
+        Serial.print(NUM_SAMPLES);
+        Serial.print(' ', BYTE);
+        if (i == 0) print_P(Left);
+        else print_P(Right);
+        print_P(Samples_);
+        for (int j = 0; j < NUM_SAMPLES; j++) {
+            Serial.print(Samples[i][j]);
+            Serial.print(' ', BYTE);
+            Serial.println(Times[i][j]);
+        } // end for (j)
+        Serial.print('\n', BYTE);
+    } // end for (i)
 }
 
 // Find peaks in Samples, and records them in Samples and Times overwriting
@@ -275,34 +305,26 @@ find_peaks(int low_threshold) {
 }
 
 void
-report_peak(char side, int sample, unsigned int round_trip_distance) {
-    Serial.print(side);
-    Serial.print(": ");
+report_peak(int sample, unsigned int round_trip_distance) {
     Serial.print(sample);
-    Serial.print('@');
+    Serial.print(' ', BYTE);
     Serial.println(float(round_trip_distance)/200.0);
 }
 
 // Report peaks that are stored in Samples and Times.
 void
 report_peaks(void) {
-    int i[2];
-    i[0] = i[1] = 0;
-
-    for (;;) {
-        if (i[0] < Num_peaks[0]) {      // there are more left peaks
-            if (i[1] < Num_peaks[1] && Times[1][i[1]] < Times[0][i[0]]) {
-                report_peak('R', Samples[1][i[1]], Times[1][i[1]]);
-                i[1] += 1;
-            } else {
-                report_peak('L', Samples[0][i[0]], Times[0][i[0]]);
-                i[0] += 1;
-            }
-        } else if (i[1] < Num_peaks[1]) {
-            report_peak('R', Samples[1][i[1]], Times[1][i[1]]);
-            i[1] += 1;
-        } else break;
-    } // end for (;;)
+    for (byte i = 0; i < 2; i++) {
+        Serial.print(Num_peaks[i]);
+        Serial.print(' ', BYTE);
+        if (i == 0) print_P(Left);
+        else print_P(Right);
+        print_P(Peaks);
+        for (int j = 0; j < Num_peaks[i]; j++) {
+            report_peak(Samples[i][j], Times[i][j]);
+        } // end for (j)
+        Serial.print('\n', BYTE);
+    } // end for (i)
 
     print_P(Min);
     Serial.println(Min_sample);
@@ -411,51 +433,50 @@ find_objects(byte ping_left) {
     }
 }
 
+byte Ping_left;
+
 void
 loop(void) {
     while (!Serial.available()) ;
     char c = Serial.read();
     Serial.flush();     // purge input data
     print_P(Stars);
-    byte ping_left;
-    byte do_report_peaks = 0;
     switch (c) {
     case 'h':
         help();
         return;
     case '-':
         read_samples(micros());
-        find_peaks(0);
-        report_peaks();
+        return;
+    case 'l':
+        read_samples(ping(LEFT_PING_PIN, LEFT_SAMPLE_PIN));
+        Ping_left = 1;
         return;
     case 'r':
         read_samples(ping(RIGHT_PING_PIN, RIGHT_SAMPLE_PIN));
+        Ping_left = 0;
+        return;
+    case 'S':
+        dump_samples();
+        return;
+    case '0':
+        find_peaks(0);
+        return;
+    case 'p':
         find_peaks(LOW_THRESHOLD);
-        ping_left = 0;
-        break;
-    case 'R':
-        read_samples(ping(RIGHT_PING_PIN, RIGHT_SAMPLE_PIN));
-        find_peaks(LOW_THRESHOLD);
-        ping_left = 0;
-        do_report_peaks = 1;
-        break;
-    case 'L':
-        read_samples(ping(LEFT_PING_PIN, LEFT_SAMPLE_PIN));
-        find_peaks(LOW_THRESHOLD);
-        ping_left = 1;
-        do_report_peaks = 1;
-        break;
-    default:
-        read_samples(ping(LEFT_PING_PIN, LEFT_SAMPLE_PIN));
-        find_peaks(LOW_THRESHOLD);
-        ping_left = 1;
-        break;
-    } // end switch (c)
-    if (do_report_peaks) {
+        return;
+    case 'P':
         report_peaks();
-        print_P(Continue);
-        while (!Serial.available()) ;
-        Serial.flush();     // purge input data
-    }
-    find_objects(ping_left);
+        return;
+    case 'f':
+        find_objects(Ping_left);
+        return;
+    default:
+        Serial.println('?', BYTE);
+        return;
+    } // end switch (c)
+
+    print_P(Continue);
+    while (!Serial.available()) ;
+    Serial.flush();     // purge input data
 }
