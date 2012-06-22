@@ -25,7 +25,12 @@ Baud_rates = {
 }
 
 class terminal(object):
+    r'''Base class for both linux and Arduino terminals.
+
+    These can be used as context managers.
+    '''
     thread = None
+
     def __init__(self, consumer = None):
         self.destinations = []
         self.listening_list = []
@@ -117,9 +122,13 @@ class usb(terminal):
 
     This is run in the main thread; so the main thread waits on output from
     the Arduino.
+
+    `format_strings` is a dict mapping the initial byte value to the
+    :class:`.format_string` object.
     '''
     close_on_eof = False
     read_len = None
+
     def __init__(self, devnum = 0, timeout = 0, baud = B57600, crtscts = False,
                  format_strings = None):
         super(usb, self).__init__()
@@ -142,22 +151,22 @@ class usb(terminal):
         if len(data) > 0 and self.format_strings:
             key = ord(data[0])
             fs = self.format_strings[key]
-            while fs.size > len(data) - 1:
-                data += os.read(self.fd, fs.size - (len(data) - 1))
-            assert len(data) - 1 == fs.size, \
+            data = ''
+            while fs.size > len(data):
+                data += os.read(self.fd, fs.size - len(data))
+            assert len(data) == fs.size, \
                    "key %d: expected len %d, got %d" % \
-                     (key, fs.size, len(data) - 1)
-            return fs.format(data[1:])
+                     (key, fs.size, len(data))
+            return fs.format(data)
         else:
             return data
 
     def write(self, s):
-        while s:
-            l = os.write(self.fd, s)
-            s = s[l:]
+        comm.write(self.fd, s)
 
     def do_close(self):
         os.close(self.fd)
+
 
 class linux_terminal(terminal):
     r'''Reads and writes to the Linux terminal.
@@ -168,6 +177,7 @@ class linux_terminal(terminal):
     close_on_eof = True
     read_len = 1
     name = "linux_terminal"
+
     def read(self):
         #sys.stderr.write("linux_terminal read called\n")
         try:
@@ -185,17 +195,22 @@ class linux_terminal(terminal):
         #sys.stderr.write("%s: interrupting main\n" % self.name)
         os.kill(os.getpid(), signal.SIGINT)
 
+
 def escape(s):
     ans = ''
     for c in s:
         n = ord(c)
-        if (n < 0x20 or n > 127) and c != '\n': ans += '\\' + hex(n)[1:]
-        else: ans += c
+        if (n < 0x20 or n > 127) and c != '\n':
+            ans += '\\x%02x' % n
+        else:
+            ans += c
     return ans
+
 
 class shell(terminal):
     read_len = None
     name = "command_processor"
+
     def __init__(self, linux, arduino, **commands):
         super(shell, self).__init__()
         self.linux = linux
@@ -233,6 +248,7 @@ class shell(terminal):
 
                 self.commands[args[0]](out, close, self.arduino, *args[1:])
                 #sys.stderr.write("%s: command returned\n" % self.name)
+
 
 class format_string(object):
     r'''This is a format string for output from the Arduino.

@@ -18,8 +18,8 @@
  *  Pin 5 (green): when pin 1 is high -> serial output "Rddd\r": 9600 N-8-1,
  *                                       ddd in cm up to 765
  *                 when pin 1 is low  -> single pulse suitable for chaining
- *                                       chain to pin 4 on next unit, triggers
- *                                       next unit after this one is done.
+ *                                       to pin 4 on next unit, triggers next
+ *                                       unit after this one is done.
  *
  *******************************************************************/
 
@@ -67,11 +67,16 @@
 // Distance == SPEED_OF_SOUND * (time + C)
 
 // in/sec
-#define SPEED_OF_SOUND          (float(1133.34)*12.0)
+//#define SPEED_OF_SOUND          (float(1133.34)*12.0)
+#define SPEED_OF_SOUND          (float(1176.29)*12.0)
 
 // Time offset (uSec)
-#define C                       -354
+#define C                       -1130
 
+#define inches(time)            (SPEED_OF_SOUND / 1e6 * float(time + C))
+
+// We sample at about 5 samples/ft (round trip), so 40*5 is up to 40ft round
+// trip, or 20ft away.
 // This requires 8 bytes per sample.
 #define NUM_SAMPLES                     (40*5)
 //#define NUM_SAMPLES                     (20*5)
@@ -88,29 +93,62 @@
 #define PING_THRESHOLD                  630
 #define LOW_THRESHOLD                   230
 
-const prog_char Oops[] PROGMEM = "oops!\n";
-const prog_char Min[] PROGMEM = "min ";
-const prog_char Max[] PROGMEM = "max ";
-const prog_char Stars[] PROGMEM = "*************************\n";
-const prog_char Continue[] PROGMEM = "hit ENTER to continue\n";
-const prog_char Help1[] PROGMEM  = "help:\n";
-const prog_char Help2[] PROGMEM  = "  h     help\n";
-const prog_char Help3[] PROGMEM  = "  -     sample: no ping\n";
-const prog_char Help4[] PROGMEM  = "  l     sample: ping left\n";
-const prog_char Help5[] PROGMEM  = "  r     sample: ping right\n";
-const prog_char Help6[] PROGMEM  = "  S     dump_samples\n";
-const prog_char Help7[] PROGMEM  = "  0     find_peaks(0)\n";
-const prog_char Help8[] PROGMEM  = "  p     find_peaks(LOW_THRESHOLD)\n";
-const prog_char Help9[] PROGMEM  = "  P     report_peaks\n";
-const prog_char Help10[] PROGMEM = "  f     find_objects\n\n";
-const prog_char Left_pin[] PROGMEM = "LEFT_PING_PIN is ";
-const prog_char Right_pin[] PROGMEM = "RIGHT_PING_PIN is ";
+//#define SCORE_THRESHOLD                 1.8
+#define SCORE_THRESHOLD                 1.5
+
+const prog_char Oops[] PROGMEM = "print oops!\n";
+const prog_char Min[] PROGMEM = "print min ";
+const prog_char Max[] PROGMEM = "print max ";
+const prog_char Stars[] PROGMEM = "print *************************\n";
+const prog_char Continue[] PROGMEM = "print hit ENTER to continue\n";
+const prog_char Help1[] PROGMEM  = "print help:\n";
+const prog_char Help2[] PROGMEM  = "print   h     help\n";
+const prog_char Help3[] PROGMEM  = "print   -     sample: no ping\n";
+const prog_char Help4[] PROGMEM  = "print   l     sample: ping left\n";
+const prog_char Help5[] PROGMEM  = "print   r     sample: ping right\n";
+const prog_char Help6[] PROGMEM  = "print   T     plot_sample_usecs\n";
+const prog_char Help7[] PROGMEM  = "print   I     plot_sample_inches\n";
+const prog_char Help8[] PROGMEM  = "print   0     find_peaks(0)\n";
+const prog_char Help9[] PROGMEM  = "print   p     find_peaks(LOW_THRESHOLD)\n";
+const prog_char Help10[] PROGMEM = "print   P     plot_peaks\n";
+const prog_char Help11[] PROGMEM = "print   f     find_objects\n";
+const prog_char Left_pin[] PROGMEM = "print LEFT_PING_PIN is ";
+const prog_char Right_pin[] PROGMEM = "print RIGHT_PING_PIN is ";
 const prog_char High[] PROGMEM = "HIGH\n";
 const prog_char Low[] PROGMEM = "LOW\n";
-const prog_char Left[] PROGMEM = "left ";
-const prog_char Right[] PROGMEM = "right ";
-const prog_char Samples_[] PROGMEM = "samples\n";
-const prog_char Peaks[] PROGMEM = "peaks\n";
+const prog_char Left_samples_usec[] PROGMEM = 
+  "$left_samples_usec_x $left_samples_usec_y\n";
+const prog_char Right_samples_usec[] PROGMEM = 
+  "$right_samples_usec_x $right_samples_usec_y\n";
+const prog_char Left_samples_in[] PROGMEM =
+  "$left_samples_in_x $left_samples_in_y\n";
+const prog_char Right_samples_in[] PROGMEM = 
+  "$right_samples_in_x $right_samples_in_y\n";
+const prog_char Left_peaks[] PROGMEM = "$left_peaks_x $left_peaks_y\n";
+const prog_char Right_peaks[] PROGMEM = "$right_peaks_x $right_peaks_y\n";
+const prog_char Print[] PROGMEM = "print ";
+const prog_char Println[] PROGMEM = "print\n";
+const prog_char Load[] PROGMEM = "load ";
+const prog_char Plot_left_samples_usec[] PROGMEM =
+  "plot $left_samples_usec_x $left_samples_usec_y g-\n";
+const prog_char Plot_right_samples_usec[] PROGMEM =
+  "plot $right_samples_usec_x $right_samples_usec_y r-\n";
+const prog_char Plot_left_samples_in[] PROGMEM =
+  "plot $left_samples_in_x $left_samples_in_y g-\n";
+const prog_char Plot_right_samples_in[] PROGMEM =
+  "plot $right_samples_in_x $right_samples_in_y r-\n";
+const prog_char Plot_left_peaks[] PROGMEM =
+  "plot $left_peaks_x $left_peaks_y g+\n";
+const prog_char Plot_right_peaks[] PROGMEM =
+  "plot $right_peaks_x $right_peaks_y r+\n";
+const prog_char Show[] PROGMEM = "show\n";
+const prog_char Get_command[] PROGMEM = "input (h|-|l|r|T|I|0|p|P|f)?\n";
+const prog_char Unknown_command[] PROGMEM = "print unknown command\n";
+const prog_char Load_peaks[] PROGMEM = "load $peak_x $peak_y\n";
+const prog_char Plot_peaks[] PROGMEM = "plot $peak_x $peak_y b-\n";
+const prog_char Plot[] PROGMEM = "plot ";
+const prog_char Single_peak[] PROGMEM = " bD\n";
+const prog_char Point[] PROGMEM = " b*\n";
 
 void
 print_P(const char PROGMEM *s) {
@@ -131,6 +169,8 @@ help(void) {
     print_P(Help8);
     print_P(Help9);
     print_P(Help10);
+    print_P(Help11);
+    print_P(Println);
 
     print_P(Left_pin);
     if (digitalRead(LEFT_PING_PIN)) {
@@ -168,10 +208,15 @@ setup(void) {
 
 // Samples/Times/Num_peaks[0] is left, Samples/Times/Num_peaks[1] is right
 int Samples[2][NUM_SAMPLES];
-unsigned int Times[2][NUM_SAMPLES]; // uSecs (up to 65mSec, or ~32ft round trip)
+
+// uSecs (up to 65mSec, or ~32ft round trip) for samples
+// inches * 100 for peaks
+unsigned int Times[2][NUM_SAMPLES];
+
 int Num_peaks[2];
 int Max_sample;
 int Min_sample;
+byte First[2];          // skips over times < -C
 
 unsigned long Start;    // ping time in uSecs
 
@@ -196,9 +241,9 @@ ping(byte ping_pin = LEFT_PING_PIN, byte sample_pin = LEFT_SAMPLE_PIN) {
         current_sample = analogRead(sample_pin);
     }
 
-    // Adjust start time:
+    // Adjust start time to est PING_THRESHOLD crossing time:
     int d = current_sample - last_sample;
-    return start
+    return last_time
          + ((start - last_time) * (PING_THRESHOLD - last_sample) + d/2) / d;
 }
 
@@ -213,26 +258,70 @@ read_samples(unsigned long start) {
         Times[1][i] = (unsigned int)(micros() - start);
         Samples[1][i] = analogRead(RIGHT_SAMPLE_PIN);
     }
+    if (C < 0) {
+        for (byte left_right = 0; left_right < 2; left_right++) {
+            for (int i = 0; i < NUM_SAMPLES; i++) {
+                if (Times[left_right][i] >= -C) {
+                    First[left_right] = i;
+                    break;
+                }
+            }
+        }
+    }
 }
 
-// Reads NUM_SAMPLES ADC samples for both L and R sensors into Samples and
-// Times arrays.  Times is microseconds.
+// Loads NUM_SAMPLES ADC samples for both L and R sensors into
+// Left/Right_samples_usec arrays.  Times is microseconds.
 void
-dump_samples(void) {
+load_sample_usecs(void) {
     // Dump samples:
     for (byte i = 0; i < 2; i++) {
-        Serial.print(NUM_SAMPLES);
-        Serial.print(' ', BYTE);
-        if (i == 0) print_P(Left);
-        else print_P(Right);
-        print_P(Samples_);
+        print_P(Load);
+        //Serial.print(NUM_SAMPLES);
+        //Serial.print(' ', BYTE);
+        if (i == 0) print_P(Left_samples_usec);
+        else print_P(Right_samples_usec);
         for (int j = 0; j < NUM_SAMPLES; j++) {
-            Serial.print(Samples[i][j]);
+            Serial.print(Times[i][j]);
             Serial.print(' ', BYTE);
-            Serial.println(Times[i][j]);
+            Serial.println(Samples[i][j]);
         } // end for (j)
-        Serial.print('\n', BYTE);
+        Serial.print('\n', BYTE);    // signal end of data
     } // end for (i)
+}
+
+void
+plot_sample_usecs(void) {
+    print_P(Plot_left_samples_usec);
+    print_P(Plot_right_samples_usec);
+    //print_P(Show);
+}
+
+// Loads NUM_SAMPLES ADC samples for both L and R sensors into
+// Left/Right_samples_in arrays.  Distance is inches/2.
+void
+load_sample_inches(void) {
+    // Dump samples:
+    for (byte i = 0; i < 2; i++) {
+        print_P(Load);
+        //Serial.print(NUM_SAMPLES);
+        //Serial.print(' ', BYTE);
+        if (i == 0) print_P(Left_samples_in);
+        else print_P(Right_samples_in);
+        for (int j = First[i]; j < NUM_SAMPLES; j++) {
+            Serial.print(inches(Times[i][j])/2.0);
+            Serial.print(' ', BYTE);
+            Serial.println(Samples[i][j]);
+        } // end for (j)
+        Serial.print('\n', BYTE);    // signal end of data
+    } // end for (i)
+}
+
+void
+plot_sample_inches(void) {
+    print_P(Plot_left_samples_in);
+    print_P(Plot_right_samples_in);
+    //print_P(Show);
 }
 
 // Find peaks in Samples, and records them in Samples and Times overwriting
@@ -247,8 +336,8 @@ find_peaks(int low_threshold) {
     Max_sample = 0;
     Min_sample = 15000;
 
-    for (int i = 1; i < NUM_SAMPLES - 1; i++) {
-        for (byte j = 0; j < 2; j++) {
+    for (byte j = 0; j < 2; j++) {
+        for (int i = First[j]+1; i < NUM_SAMPLES - 1; i++) {
             if (Samples[j][i] < Min_sample) {
                 Min_sample = Samples[j][i];
             }
@@ -294,34 +383,34 @@ find_peaks(int low_threshold) {
                     float t_max = -b/(2.0*a);
                     float s_max = a*t_max*t_max + b*t_max + c;
                     t_max += Times[j][i];
-                    float d_max = SPEED_OF_SOUND / 1e6 * float(t_max + C);
+                    float d_max = inches(t_max);
                     Samples[j][Num_peaks[j]] = int(s_max);
                     Times[j][Num_peaks[j]] = (unsigned int)(d_max * 100);
                     Num_peaks[j] += 1;
                 }
             } // end if (max)
-        } // end for (j)
-    } // end for (i)
+        } // end for (i)
+    } // end for (j)
 }
 
 void
-report_peak(int sample, unsigned int round_trip_distance) {
-    Serial.print(sample);
+load_peak(int sample, unsigned int round_trip_distance) {
+    Serial.print(float(round_trip_distance)/200.0);
     Serial.print(' ', BYTE);
-    Serial.println(float(round_trip_distance)/200.0);
+    Serial.println(sample);
 }
 
-// Report peaks that are stored in Samples and Times.
+// Load peaks that are stored in Samples and Times.
 void
-report_peaks(void) {
+load_peaks(void) {
     for (byte i = 0; i < 2; i++) {
-        Serial.print(Num_peaks[i]);
-        Serial.print(' ', BYTE);
-        if (i == 0) print_P(Left);
-        else print_P(Right);
-        print_P(Peaks);
+        print_P(Load);
+        //Serial.print(Num_peaks[i]);
+        //Serial.print(' ', BYTE);
+        if (i == 0) print_P(Left_peaks);
+        else print_P(Right_peaks);
         for (int j = 0; j < Num_peaks[i]; j++) {
-            report_peak(Samples[i][j], Times[i][j]);
+            load_peak(Samples[i][j], Times[i][j]);
         } // end for (j)
         Serial.print('\n', BYTE);
     } // end for (i)
@@ -332,17 +421,64 @@ report_peaks(void) {
     Serial.println(Max_sample);
 }
 
+// Plot peaks that are stored in Left/Right_peaks against Left/Right_samples_in.
 void
-report_object(int peak_sample, unsigned int distance, int angle) {
-    Serial.print(float(distance)/200.0);
-    Serial.print('@');
-    Serial.print(angle);
-    Serial.print('=');
-    Serial.println(peak_sample);
+plot_peaks(void) {
+    print_P(Plot_left_samples_in);
+    print_P(Plot_right_samples_in);
+    print_P(Plot_left_peaks);
+    print_P(Plot_right_peaks);
+    //print_P(Show);
 }
 
-int
-calc_angle(unsigned int dist_left, unsigned int dist_right, byte ping_left) {
+void
+report_object(int ping_side, int ping_index, int idle_index, int peak_sample,
+              int x, int y)
+{
+    // ping_index or idle_index is -1 if not matched.
+    print_P(Print);
+    Serial.print(peak_sample);
+    Serial.print('@');
+    Serial.print(float(x)/100.0);
+    Serial.print(',');
+    Serial.println(float(y)/100.0);
+
+    // plot the peaks
+    int idle_side = 1 - ping_side;
+    if (ping_index >= 0 && idle_index >= 0) {
+        print_P(Load_peaks);
+        Serial.print(float(Times[ping_side][ping_index])/200.0);
+        Serial.print(' ');
+        Serial.println(Samples[ping_side][ping_index]);
+        Serial.print(float(Times[idle_side][idle_index])/200.0);
+        Serial.print(' ');
+        Serial.println(Samples[idle_side][idle_index]);
+        Serial.print('\n', BYTE);
+        print_P(Plot_peaks);
+    } else {
+        print_P(Plot);
+        if (ping_index >= 0) {
+            Serial.print(float(Times[ping_side][ping_index])/200.0);
+            Serial.print(' ');
+            Serial.print(Samples[ping_side][ping_index]);
+        } else {
+            Serial.print(float(Times[idle_side][idle_index])/200.0);
+            Serial.print(' ');
+            Serial.print(Samples[idle_side][idle_index]);
+        }
+        print_P(Single_peak);
+    }
+
+    // plot the position of the object:
+    print_P(Plot);
+    Serial.print(float(x)/100.0);
+    Serial.print(' ');
+    Serial.print(float(y)/100.0);
+    print_P(Point);
+}
+
+void
+calc_position(unsigned int dist_ping, unsigned int dist_idle, int *x, int *y) {
     /***********************************************************************
      *
      *                 .|
@@ -350,133 +486,196 @@ calc_angle(unsigned int dist_left, unsigned int dist_right, byte ping_left) {
      *             .  . |
      *           .   .  |
      *         .    .   |
-     *     dl.   dr.    | y
+     *     dp.   di.    | y
      *     .      .     |
      *   ^-------^------+
      *   |<--d-->|
      *   |<------x----->|
      *
      * For above example (x > d > 0):
-     *    x**2 + y**2 == dl**2
-     *    (x-d)**2 + y**2 == dr**2
+     *    x**2 + y**2 == dp**2
+     *    (x-d)**2 + y**2 == di**2
      *
      * For in-between case (d > x > 0):
-     *    x**2 + y**2 == dl**2
-     *    (d-x)**2 + y**2 == dr**2
+     *    x**2 + y**2 == dp**2
+     *    (d-x)**2 + y**2 == di**2
+     * or (x-d)**2 + y**2 == di**2
      *
      * For x < 0 case:
-     *    x**2 + y**2 == dl**2
-     *    (x+d)**2 + y**2 == dr**2
+     *    x**2 + y**2 == dp**2
+     *    (-x+d)**2 + y**2 == di**2
+     * or (d-x)**2 + y**2 == di**2
+     * or (x-d)**2 + y**2 == di**2
      *
-     *    dl**2 - x**2 == dr**2 - (x**2 +/- 2dx + d**2)
-     *    dr**2 - (x**2 +/- 2dx + d**2) == dl**2 - x**2
-     *    -/+ 2dx - d**2 == dl**2 - dr**2
-     *    x == -/+(dl**2 - dr**2 + d**2) / (2d)
+     *    dp**2 - x**2 == di**2 - (x**2 - 2dx + d**2)
+     *    di**2 - (x**2 - 2dx + d**2) == dp**2 - x**2
+     *    di**2 - x**2 + 2dx - d**2 == dp**2 - x**2
+     *    2dx - d**2 == dp**2 - di**2
+     *    x == (dp**2 - di**2 + d**2) / (2d)
      *
-     *    y == sqrt(dl**2 - x**2)
+     *    y == sqrt(dp**2 - x**2)
      *
      ***********************************************************************/
 
-    if (ping_left) {
-        dist_left /= 2;
-        dist_right -= dist_left;
-    } else {
-        dist_right /= 2;
-        dist_left -= dist_right;
-    }
-    unsigned long dl2 = (unsigned long)dist_left * (unsigned long)dist_left;
-    unsigned long dr2 = (unsigned long)dist_right * (unsigned long)dist_right;
+    dist_ping /= 2;
+    dist_idle -= dist_ping;
+    unsigned long dp2 = (unsigned long)dist_ping * (unsigned long)dist_ping;
+    unsigned long di2 = (unsigned long)dist_idle * (unsigned long)dist_idle;
     unsigned long d = (unsigned long)DIST_BETWEEN_SENSORS;
     unsigned long d2 = d * d;
-    int x = (dl2 - dr2 + d2) / (2*d);
-    if (dr2 - d2 > dl2) x = -x;
-    int y = sqrt(dl2 - x*x);
-    return 180.0 * atan2(y, x) / M_PI - 90.0;
+    int x_tmp = (dp2 - di2 + d2) / (2*d);
+    *x = x_tmp;
+    *y = sqrt(dp2 - x_tmp*x_tmp);
+    //return 180.0 * atan2(y, x) / M_PI - 90.0;
 }
 
 void
-find_objects(byte ping_left) {
-    int i[2];
-    i[0] = i[1] = 0;
+find_objects(byte ping_side) {
+    byte i[2];
+    byte idle_side = 1 - ping_side;
 
-    while (i[0] < Num_peaks[0] && i[1] < Num_peaks[1]) {
-        unsigned int dist_left = Times[0][i[0]];
-        unsigned int dist_right = Times[1][i[1]];
-        if (dist_left <= dist_right) {
-            if (dist_right - dist_left <= DIST_BETWEEN_SENSORS) {
-                report_object(max(Samples[0][i[0]], Samples[1][i[1]]),
-                              ping_left ? dist_left : dist_right,
-                              calc_angle(dist_left, dist_right, ping_left));
-                i[1] += 1;
-            } else {
-                report_object(Samples[0][i[0]], dist_left, 90);
+    byte first_idle = 0;
+
+    // get idle side past direct sense of ping
+    while (first_idle < Num_peaks[idle_side]
+        && Times[idle_side][first_idle] < 50
+    ) {
+        first_idle += 1;
+    }
+
+    // zero out end of Samples[idle_side] to track which idle_side peaks we've
+    // matched.
+    for (i[idle_side] = first_idle;
+         i[idle_side] < Num_peaks[idle_side];
+         i[idle_side]++
+    ) {
+        Samples[idle_side][NUM_SAMPLES - 1 - i[idle_side]] = 0;
+    }
+
+    for (i[ping_side] = 0;
+         i[ping_side] < Num_peaks[ping_side];
+         i[ping_side]++
+    ) {
+        byte best_fit = 0;
+        float best_score = 1e10;
+        unsigned int time_ping = Times[ping_side][i[ping_side]];
+        float dist_ping = time_ping / 2.0;
+        float ping_wammy = dist_ping*dist_ping*Samples[ping_side][i[ping_side]];
+
+        for (i[idle_side] = first_idle;
+             i[idle_side] < Num_peaks[idle_side];
+             i[idle_side]++
+        ) {
+            unsigned int time_idle = Times[idle_side][i[idle_side]];
+            if (time_idle < time_ping
+                && time_ping - time_idle > DIST_BETWEEN_SENSORS
+            ) {
+                continue;
             }
-            i[0] += 1;
-        } else { // dist_left > dist_right
-            if (dist_left - dist_right <= DIST_BETWEEN_SENSORS) {
-                report_object(max(Samples[0][i[0]], Samples[1][i[1]]),
-                              ping_left ? dist_left : dist_right,
-                              calc_angle(dist_left, dist_right, ping_left));
-                i[0] += 1;
-            } else {
-                report_object(Samples[1][i[1]], dist_right, -90);
+            if (time_idle > time_ping
+                && time_idle - time_ping > DIST_BETWEEN_SENSORS
+            ) {
+                break;
             }
-            i[1] += 1;
+
+            float dist_idle = time_idle - dist_ping;
+            float idle_wammy = 
+              dist_idle*dist_idle*Samples[idle_side][i[idle_side]];
+            float score = ping_wammy >= idle_wammy
+                          ? ping_wammy / idle_wammy
+                          : idle_wammy / ping_wammy;
+            if (score <= SCORE_THRESHOLD && score < best_score) {
+                best_score = score;
+                best_fit = i[idle_side];
+            }
+        } // end for (i[idle_side])
+
+        if (best_fit == 0) {
+            /*****
+            report_object(ping_side, i[ping_side], -1,
+                          Samples[ping_side][i[ping_side]],
+                          ping_side ? time_ping/2 : -time_ping/2, 0);
+             *****/
+        } else {
+            int x, y;
+            calc_position(time_ping, Times[idle_side][best_fit], &x, &y);
+            report_object(ping_side, i[ping_side], best_fit,
+                          max(Samples[ping_side][i[ping_side]],
+                              Samples[idle_side][best_fit]),
+                          x, y);
+            Samples[idle_side][NUM_SAMPLES - 1 - best_fit] = 1;
         }
-    } // end while (i[0] < Num_peaks[0] && i[1] < Num_peaks[1])
+    } // end for (i[ping_side])
 
-    if (i[0] < Num_peaks[0]) {
-        report_object(Samples[0][i[0]], Times[0][i[0]], 90);
+    /************
+    // report any unmatched peaks on the idle_side
+    for (i[idle_side] = first_idle;
+         i[idle_side] < Num_peaks[idle_side];
+         i[idle_side]++
+    ) {
+        if (Samples[idle_side][NUM_SAMPLES - 1 - i[idle_side]] == 0) {
+            int time_idle = Times[idle_side][i[idle_side]]
+                            + DIST_BETWEEN_SENSORS;
+            report_object(ping_side, -1, i[idle_side],
+                          Samples[idle_side][i[idle_side]],
+                          ping_side ? -time_idle/2 : time_idle/2, 0);
+        }
     }
-    if (i[1] < Num_peaks[1]) {
-        report_object(Samples[1][i[1]], Times[1][i[1]], -90);
-    }
+     ************/
+    plot_peaks();
+    print_P(Show);
 }
 
-byte Ping_left;
+byte Ping_side;
 
 void
 loop(void) {
+    Serial.flush();     // purge input data
+    print_P(Get_command);
     while (!Serial.available()) ;
     char c = Serial.read();
-    Serial.flush();     // purge input data
     print_P(Stars);
     switch (c) {
     case 'h':
         help();
-        return;
+        break;
     case '-':
         read_samples(micros());
-        return;
+        break;
     case 'l':
         read_samples(ping(LEFT_PING_PIN, LEFT_SAMPLE_PIN));
-        Ping_left = 1;
-        return;
+        Ping_side = 0;
+        load_sample_usecs();
+        load_sample_inches();
+        break;
     case 'r':
         read_samples(ping(RIGHT_PING_PIN, RIGHT_SAMPLE_PIN));
-        Ping_left = 0;
-        return;
-    case 'S':
-        dump_samples();
-        return;
+        Ping_side = 1;
+        break;
+    case 'T':
+        plot_sample_usecs();
+        print_P(Show);
+        break;
+    case 'I':
+        plot_sample_inches();
+        print_P(Show);
+        break;
     case '0':
         find_peaks(0);
-        return;
+        load_peaks();
+        break;
     case 'p':
         find_peaks(LOW_THRESHOLD);
-        return;
+        load_peaks();
+        break;
     case 'P':
-        report_peaks();
-        return;
+        plot_peaks();
+        break;
     case 'f':
-        find_objects(Ping_left);
-        return;
+        find_objects(Ping_side);
+        break;
     default:
-        Serial.println('?', BYTE);
-        return;
+        print_P(Unknown_command);
+        break;
     } // end switch (c)
-
-    print_P(Continue);
-    while (!Serial.available()) ;
-    Serial.flush();     // purge input data
 }
