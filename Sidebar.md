@@ -1,0 +1,3 @@
+  * GamePlan
+  * LessonsLearned
+    * UseMicrocontrollersAsHelperChips
